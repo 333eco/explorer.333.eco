@@ -1,0 +1,93 @@
+/* HeartBank® identity pages — one stylesheet for login.333.eco, sign.333.eco and origin.333.eco. Ported from the drawings on
+   demo.333.eco (board.css): same tokens, same components; made responsive (the boards are drawn at 390 px) and set to follow
+   the person's own light/dark setting, which the footer toggle (Auto / Light / Dark, theme.js) may override. The three services
+   each ship an IDENTICAL copy (a test in each repo pins the hash). */
+:root{
+  --bg:#fcfbfe; --surface:#f4f1fb; --surface-2:#ebe7f5; --line:rgba(20,16,30,.12); --line-strong:rgba(20,16,30,.28);
+  --ink:#16141c; --ink-dim:#5b5766; --ink-faint:#8b8796;
+  --accent:#0f52ba; --accent-ink:#fff;
+  --wash:color-mix(in oklab,var(--accent) 9%,transparent); --edge:color-mix(in oklab,var(--accent) 30%,transparent);
+  --font-text:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif; --font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --font-khmer:"Noto Sans Khmer","Khmer Sangam MN",sans-serif; --r:16px; --r-pill:999px; color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#0a0a0f; --surface:#17171d; --surface-2:#1f1f27; --line:rgba(255,255,255,.08); --line-strong:rgba(255,255,255,.18);
+  --ink:#f5f5f7; --ink-dim:#9b9ba5; --ink-faint:#6b6b76;
+  --accent:color-mix(in oklab,#0f52ba 55%,#fff); --accent-ink:#0a0a0f; color-scheme:dark;
+}}
+:root[data-theme=dark]{
+  --bg:#0a0a0f; --surface:#17171d; --surface-2:#1f1f27; --line:rgba(255,255,255,.08); --line-strong:rgba(255,255,255,.18);
+  --ink:#f5f5f7; --ink-dim:#9b9ba5; --ink-faint:#6b6b76;
+  --accent:color-mix(in oklab,#0f52ba 55%,#fff); --accent-ink:#0a0a0f; color-scheme:dark;
+}
+/* The beat's two numbers, copied from brand.333.eco/css/tokens.css (motion.css does not define them; an html rule, not :root). */
+html{--beat-duration:1.5s;--beat-delay:0s}
+*{box-sizing:border-box}[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg)}
+body{color:var(--ink);font:15px/1.5 var(--font-text);-webkit-font-smoothing:antialiased}
+html[lang=km] body{font-family:var(--font-khmer),var(--font-text);line-height:1.7}
+a{color:var(--accent)}
+.app{max-width:26rem;margin:0 auto;padding:0 20px 28px;min-height:100vh;display:flex;flex-direction:column}
+header{display:flex;align-items:center;justify-content:space-between;padding:18px 0 10px}
+.wordmark{font-weight:600;font-size:1.15rem;white-space:nowrap;letter-spacing:-.01em;
+  --emblem-cap:.68em;--emblem-size:calc(var(--emblem-cap)*1.1);--emblem-box:calc(var(--emblem-size)/.7534)}
+.wordmark svg{width:var(--emblem-box);height:var(--emblem-box);color:var(--accent);vertical-align:baseline;
+  margin-top:calc(var(--emblem-box)*-.09312);margin-bottom:calc(var(--emblem-box)*-.15333);
+  margin-left:calc(var(--emblem-box)*-.15343 + 1px);margin-right:calc(var(--emblem-box)*-.09312 - 1px)}
+.wordmark sup{font-size:.55em;font-weight:500;vertical-align:.62em;margin-left:.06em;line-height:0}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--r-pill);padding:2px;font-size:12px}
+.seg span,.seg a,.seg button{padding:3px 10px;border-radius:var(--r-pill);color:var(--ink-dim);text-decoration:none;background:none;border:0;font:inherit;cursor:pointer}
+.seg .on,.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+main{flex:1}
+h1{font-size:26px;line-height:1.2;margin:14px 0 6px;letter-spacing:-.015em}
+h2{font-size:15px;margin:18px 0 6px}
+.lede{color:var(--ink-dim);margin:0 0 18px}
+.card{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:16px;margin:0 0 12px}
+.card h2{font-size:14px;margin:0 0 6px}.card p{margin:0;color:var(--ink-dim);font-size:14px}
+.note{border-left:3px solid var(--accent);background:var(--wash);border-radius:0 12px 12px 0;padding:12px 14px;font-size:14px;margin:0 0 12px}
+.btn{display:block;width:100%;border:0;border-radius:14px;padding:15px;font:600 16px var(--font-text);text-align:center;text-decoration:none;
+  background:var(--accent);color:var(--accent-ink);margin:8px 0 0;cursor:pointer}
+html[lang=km] .btn{font-family:var(--font-khmer),var(--font-text)}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line-strong)}
+.btn svg{vertical-align:-3px;margin-right:6px}
+label{display:block;font-size:13.5px;color:var(--ink-dim);margin-top:12px}
+.field{display:block;width:100%;border:1px solid var(--line-strong);border-radius:12px;padding:12px 14px;background:var(--bg);color:var(--ink);font:15px var(--font-text);margin-top:6px}
+.field:focus-visible,.btn:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.otp{letter-spacing:.3em;font:20px var(--font-mono);text-align:center}
+.more{display:block;margin:14px 0 0;text-align:center;font-weight:600;font-size:14px}
+.fine{color:var(--ink-dim);font-size:12.5px;margin:10px 0 0}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}.row:first-of-type{border-top:0}
+.row .t{font-size:14px;font-weight:600}.row .s{font-size:12.5px;color:var(--ink-dim)}
+.list{margin:0 0 8px;padding:0;list-style:none}
+footer{border-top:1px solid var(--line);padding-top:14px;margin-top:24px;color:var(--ink-faint);font-size:11.5px;text-align:center}
+footer p{margin:0 0 10px}
+.foot-row{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;color:var(--ink-dim);font-size:12.5px}
+.foot-row p{margin:0}.foot-row a{color:inherit}
+.sm{font-size:.6em;vertical-align:.6em;line-height:0;margin-left:.04em}
+/* For a shell whose language the page script picks (origin.333.eco): both languages are rendered, the html lang shows one. */
+html[lang=km] .l-en,html:not([lang=km]) .l-km{display:none!important}
+.btn.small{display:inline-block;width:auto;margin:0;padding:8px 12px;font-size:14px}
+.acts{display:flex;gap:8px;flex:none}
+.tag{font-size:11.5px;color:var(--ink-dim);border:1px solid var(--line-strong);border-radius:var(--r-pill);padding:1px 8px;margin-left:6px;font-weight:500}
+.wordmark-link{text-decoration:none;color:inherit}
+.head-end{display:inline-flex;align-items:center;gap:8px;flex:none}
+.head-btn{padding:4px 11px;font-size:12.5px;border-radius:var(--r-pill);white-space:nowrap}
+/* An app's own header (B-Origin): the wordmark, the app's name in the true center, the controls. On a phone the name takes its own centered row. */
+header.has-name{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
+header.has-name .head-end{justify-self:end}
+.app-name{font-weight:650;font-size:1rem;color:var(--ink);white-space:nowrap;text-decoration:none;text-align:center}
+@media (max-width:560px){header.has-name{grid-template-columns:auto auto;row-gap:6px}header.has-name .app-name{grid-row:2;grid-column:1/-1}}
+.nav{display:flex;gap:2px;margin:2px 0 10px;border-bottom:1px solid var(--line);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nav a{padding:8px 11px;font-size:14px;font-weight:600;color:var(--ink-dim);text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.nav a[aria-current=page]{color:var(--ink);border-bottom-color:var(--accent)}
+.hero{text-align:center;padding:18px 0 6px}
+.cta-grid{display:grid;gap:12px}
+.sr{position:absolute;left:-9999px}
+.mark{font-weight:600}
+.btn[aria-disabled=true],.btn:disabled{opacity:.6;pointer-events:none}
+/* The heartbeat, verbatim from brand.333.eco/css/motion.css (two unequal beats, then rest: the morphology is the signature).
+   On the wordmark's emblem only (chrome), never beside a person's name. */
+@keyframes heartbeat{0%,100%{transform:scale(1)}14%{transform:scale(1.3)}28%{transform:scale(1)}42%{transform:scale(1.3)}70%{transform:scale(1)}}
+.beating{animation:heartbeat var(--beat-duration) var(--beat-delay) infinite;transform-origin:center}
+@media (prefers-reduced-motion:reduce){.beating{animation:none}}

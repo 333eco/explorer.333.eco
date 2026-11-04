@@ -1,0 +1,16 @@
+{
+    "name": "explorer.333.eco",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "node scripts/build.mjs",
+        "drive": "node scripts/drive.mjs"
+    },
+    "dependencies": {
+        "@333eco/origin-verify": "0.1.1"
+    },
+    "devDependencies": {
+        "esbuild": "0.28.2",
+        "typescript": "5.9.3"
+    }
+}
