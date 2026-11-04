@@ -1,6 +1,6 @@
 .ex-search{display:flex;gap:8px;align-items:stretch;margin:14px 0 6px}.ex-search input{flex:1;min-width:0;font:inherit;padding:10px 12px;border-radius:12px;border:1px solid var(--line-strong);background:var(--bg);color:var(--ink)}
 .ex-search .btn{width:auto;margin:0;padding-inline:16px}
-.ex-file{display:inline-block;font-size:14px;color:var(--accent);cursor:pointer;text-decoration:underline}.ex-file input{position:absolute;width:1px;height:1px;opacity:0}
+.ex-file{display:inline-block;margin:2px 0 16px;font-size:14px;color:var(--accent);cursor:pointer;text-decoration:underline}.ex-file input{position:absolute;width:1px;height:1px;opacity:0}
 .ex-table{width:100%;border-collapse:collapse;font-size:14px}.ex-table th{text-align:left;font-weight:600;color:var(--ink-dim);padding:6px 8px 6px 0;border-bottom:1px solid var(--line-strong)}.ex-table td{padding:9px 8px 9px 0;border-bottom:1px solid var(--line);vertical-align:top}
 .ex-scroll{overflow-x:auto}.ex-mono{font-family:var(--font-mono);font-size:13px;overflow-wrap:anywhere}
 .ex-kv{display:grid;grid-template-columns:minmax(110px,auto) 1fr;gap:6px 14px;margin:0}.ex-kv dt{color:var(--ink-dim)}.ex-kv dd{margin:0;overflow-wrap:anywhere}
@@ -9,3 +9,7 @@
 .ex-row{display:block;text-decoration:none;color:inherit;padding:12px 0;border-top:1px solid var(--line)}.ex-row:first-child{border-top:0}.ex-row b{display:block;font-weight:650;color:var(--ink)}.ex-row span{font-size:13.5px;color:var(--ink-dim)}.ex-row:hover b{color:var(--accent)}
 .ex-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .ex-more{width:100%}.ex-gap{margin-top:14px}
+.ex-count{margin:4px 0 12px}
+a.ex-doc{display:block;text-decoration:none;color:inherit;margin-bottom:10px}a.ex-doc b{display:block;font-weight:650;color:var(--ink);margin-bottom:4px}a.ex-doc>span{font-size:13.5px;color:var(--ink-dim)}a.ex-doc:hover{border-color:var(--accent)}a.ex-doc:hover b{color:var(--accent)}
+.ex-row{display:block}a.ex-row{text-decoration:none}
+.ex-block{display:block;font-size:clamp(22px,6vw,28px);font-weight:700;letter-spacing:-.01em;margin:4px 0 6px;color:var(--accent);text-decoration:none}.ex-block:hover{text-decoration:underline}

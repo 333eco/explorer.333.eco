@@ -7,7 +7,7 @@
         "drive": "node scripts/drive.mjs"
     },
     "dependencies": {
-        "@333eco/origin-verify": "0.1.1"
+        "@333eco/origin-verify": "0.1.2"
     },
     "devDependencies": {
         "esbuild": "0.28.2",

@@ -53,12 +53,12 @@ try {
 
     await size(390, 844, true); await go("/");
     await until(`/all checked/.test(document.querySelector('main').innerText)`, "the audited log");
-    must(/\/origin$/.test(await ev("location.pathname")), "the root opens the records");
+    must(/\/origin$/.test(await ev("location.pathname")), "the root opens the records"); must(await ev(`document.title==='Records · B-Explorer' && document.querySelector('h1').textContent==='Records' && /B-Explorer/.test(document.querySelector('.app-name').textContent) && /B-Origin℠/.test(document.querySelector('.nav').textContent)`), "the names are as ruled");
     must(/Made by hand|Made with AI|Photo or|Edited|Combined/.test(await body()), "record 0 is listed, in plain words");
     await shot("1-origin"); await noSideways("records");
     await ev(`document.querySelector('table a').click()`); await until(`/Checked in your browser/.test(document.querySelector('main').innerText)`, "the record");
     const rec = await body();
-    must(/It is in the log/.test(rec) && /Timestamp:/.test(rec), "a record's proof and timestamps are checked here"); must(/What a record can.t show/.test(rec), "and it says its limit");
+    must(/It is in the log/.test(rec) && /Timestamp:/.test(rec), "a record's proof and timestamps are checked here"); must(/Bitcoin/.test(rec), "a record always says where it stands with Bitcoin"); must(/What a record can.t show/.test(rec), "and it says its limit");
     must(!/witness/i.test(rec.replace(/signature on this entry/i, "")), "⛔ no word about outside witnesses");
     must(!/\bnull\b|undefined/.test(rec), "no stray null on the page"); await shot("2-record"); await noSideways("record"); console.log(rec.split("\n").filter((l) => /Timestamp|Bitcoin|block|later/i.test(l)).join(" | ").slice(0, 400));
     await go("/origin/999999"); await until(`/doesn.t have this entry/.test(document.querySelector('main').innerText)`, "a missing record's plain answer"); must(true, "a record that doesn't exist says so");
@@ -74,17 +74,20 @@ try {
     tamper = false; await cdp("Fetch.disable"); await cdp("Network.setCacheDisabled", { cacheDisabled: false });
 
     await go("/corpus"); await until(`/\\d+ documents/.test(document.querySelector('main').innerText)`, "the corpus");
-    must(/1\d\d documents/.test(await body()), "the corpus lists every served document"); await shot("4-corpus"); await noSideways("corpus");
+    must(/1\d\d documents/.test(await body()), "the corpus lists every served document"); must(!/\bnull\b/.test(await body()), "no stray null at the end of the list"); must(await ev(`document.querySelectorAll('a.card.ex-doc').length>10 && getComputedStyle(document.querySelector('a.ex-doc')).textDecorationLine==='none'`), "each document is its own card, with no underline"); await shot("4-corpus"); await noSideways("corpus");
     await ev(`(()=>{const i=document.querySelector('input[type=search]');i.value='zzzz-nothing';i.dispatchEvent(new Event('input'));})()`); await until(`/^0 documents/m.test(document.querySelector('main').innerText)`, "the filter"); must(true, "the filter narrows");
     await go("/corpus/a-promise-that-cannot-grow"); await until(`!/Checking…/.test(document.querySelector('main').innerText) && /Today.s text/.test(document.querySelector('main').innerText)`, "the live legs");
     const doc = await body(); console.log(doc.split("\n").filter(Boolean).slice(0, 26).join(" | ").slice(0, 900));
     must(/hashed here just now/.test(doc), "today's text was hashed here and matches"); must(/manifest/.test(doc), "the timestamp manifest was read"); must(/never proves that the text is true/.test(doc), "and it says its limit"); must(!/deposit/i.test(doc), "⛔ never *deposit*");
-    must(await ev(`[...document.querySelectorAll('.ex-ok')].every(x=>/Today/.test(x.textContent)||/authorities/.test(x.textContent))`), "⛔ a tick only on what this page really checked"); await shot("5-doc"); await noSideways("doc");
+    must(await ev(`[...document.querySelectorAll('.ex-ok')].every(x=>/Today/.test(x.textContent)||/authorities/.test(x.textContent))`), "⛔ a tick only on what this page really checked"); must(await ev(`/^https:\\/\\/mempool\\.space\\/block\\/\\d+$/.test(document.querySelector('a.ex-block')?.href)`), "the block is a link to a Bitcoin explorer"); must(await ev(`parseFloat(getComputedStyle(document.querySelector('a.ex-block')).fontSize)>=22`), "and it's prominent"); await shot("5-doc"); await noSideways("doc");
+    await go("/corpus/first-letter-to-miss-aquarius"); await until(`[...document.querySelectorAll('main a')].some(a=>/Read it/.test(a.textContent))`, "a letter");
+    must(await ev(`[...document.querySelectorAll('main a')].find(a=>/Read it/.test(a.textContent)).href==='https://missaquarius.org/letters/first.html'`), "a letter's Read it is one good address (the found bug: https://https//)");
+    await go("/corpus/a-promise-that-cannot-grow"); await until(`[...document.querySelectorAll('main a')].some(a=>/Read it/.test(a.textContent))`, "a paper"); must(await ev(`[...document.querySelectorAll('main a')].find(a=>/Read it/.test(a.textContent)).href==='https://thonly.org/research/a-promise-that-cannot-grow'`), "CONTROL: a paper's address without a scheme still works");
     await go("/corpus/no-such-paper"); await until(`/no document by that name/.test(document.querySelector('main').innerText)`, "a missing paper"); must(true, "a paper that doesn't exist says so");
     await go("/corpus/a-promise-that-cannot-grow"); await until(`!/Checking…/.test(document.querySelector('main').innerText) && /Today/.test(document.querySelector('main').innerText)`, "again");
     await ev(`document.querySelector('button[data-lang=km]').click()`); await until(`document.documentElement.lang==='km' && /ត្រាពេលវេលា/.test(document.querySelector('main').innerText)`, "Khmer"); await sleep(1500); await shot("6-doc-km");
     await go("/origin"); await until(`document.querySelector('table')`, "records in Khmer"); await shot("7-origin-km"); await ev(`document.querySelector('button[data-lang=en]').click()`); await until(`document.querySelector('table')`, "records"); await dark(true); await shot("8-origin-dark"); await dark(false);
-    await size(1280, 800, false); await go("/corpus"); await until(`document.querySelector('.ex-row')`, "desktop corpus"); await shot("9-corpus-desktop");
+    await size(1280, 800, false); await go("/corpus"); await until(`document.querySelector('.ex-doc')`, "desktop corpus"); await shot("9-corpus-desktop");
     must(errors.length === 0, `browser errors: ${errors.length ? errors.slice(0, 4).join(" || ").slice(0, 700) : "none"}`);
 } catch (e) { console.log("FAILED:", e.message.slice(0, 900)); code = 1; }
 finally { chrome.kill(); srv.close(); srv.closeAllConnections(); }

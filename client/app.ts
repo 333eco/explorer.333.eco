@@ -42,6 +42,7 @@ const text = (b: Uint8Array) => new TextDecoder().decode(b);
 const head = (title: string, lede?: string) => h("div", {}, h("h1", {}, title), lede ? h("p", { class: "lede" }, lede) : null);
 const card = (...kids: Kid[]) => h("div", { class: "card" }, ...kids);
 const leg = (ok: boolean | null, title: string, ...body: Kid[]) => h("div", { class: "ex-leg" }, h("b", { class: ok === true ? "ex-ok" : ok === false ? "ex-bad" : "" }, title), h("p", {}, ...body));
+const blockLink = (height: number) => h("a", { class: "ex-block", href: `https://mempool.space/block/${height}`, rel: "noopener" }, say(`Block ${n(height)}`, `ប្លុក ${n(height)}`));
 const code = (s: string) => h("pre", { class: "code" }, h("code", {}, s));
 
 /* ─────────────── B-Origin records ─────────────── */
@@ -91,11 +92,11 @@ function results() {
     if (found === null) return searchNote ? h("p", { class: "fine", role: "status" }, searchNote) : null;
     const certain = [...found].sort((a, b) => (a.how === "similar" ? 1 : 0) - (b.how === "similar" ? 1 : 0) || (a.distance ?? 0) - (b.distance ?? 0));
     return card(h("h2", {}, found.length ? say(`${found.length} found`, `រកឃើញ ${found.length}`) : say("No record matches", "គ្មានកំណត់ត្រាត្រូវគ្នាទេ")),
-        ...certain.map((m) => link(`/origin/${m.index}`, h("span", { class: "ex-row" }, h("b", {}, `#${n(m.index)}`), h("span", {}, HOW[m.how]?.[isKm() ? 1 : 0] ?? m.how)))),
+        ...certain.map((m) => h("a", { class: "ex-row", href: `/origin/${m.index}` }, h("b", {}, `#${n(m.index)}`), h("span", {}, HOW[m.how]?.[isKm() ? 1 : 0] ?? m.how))),
         searchNote ? h("p", { class: "fine" }, searchNote) : null);
 }
 async function originPage() {
-    const title = head(say("B-Origin records", "កំណត់ត្រា B-Origin"), say("A public log of what people chose to sign. It only ever grows, and every entry below was checked in your browser just now.", "កំណត់ហេតុសាធារណៈនៃអ្វីដែលមនុស្សបានជ្រើសរើសចុះហត្ថលេខា។ វាគ្រាន់តែកើនឡើង ហើយកំណត់ត្រានីមួយៗខាងក្រោមត្រូវបានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នកមុននេះបន្តិច។"));
+    const title = head(say("Records", "កំណត់ត្រា"), say("A public log of what people chose to sign. It only ever grows, and every entry below was checked in your browser just now.", "កំណត់ហេតុសាធារណៈនៃអ្វីដែលមនុស្សបានជ្រើសរើសចុះហត្ថលេខា។ វាគ្រាន់តែកើនឡើង ហើយកំណត់ត្រានីមួយៗខាងក្រោមត្រូវបានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នកមុននេះបន្តិច។"));
     view.replaceChildren(title, card(h("p", { role: "status" }, say("Reading and checking the public log…", "កំពុងអាន និងពិនិត្យកំណត់ហេតុសាធារណៈ…"))));
     const l = await readLog();
     if (route().name !== "origin") return;
@@ -138,9 +139,10 @@ async function recordPage(index: number) {
             leg(true, say("The signature on this entry", "ហត្ថលេខាលើធាតុនេះ")), leg(true, say("It is in the log", "វានៅក្នុងកំណត់ហេតុ"), pack.inclusion.length ? say(`${count(pack.inclusion.length, "hash leads", "hashes lead")} from this entry to the log's signed root.`, `${n(pack.inclusion.length)} ហាសនាំពីធាតុនេះទៅឫសដែលបានចុះហត្ថលេខារបស់កំណត់ហេតុ។`) : say("It's the only entry so far, so it is the log's signed root.", "វាជាធាតុតែមួយគត់រហូតមកដល់ពេលនេះ ដូច្នេះវាជាឫសដែលបានចុះហត្ថលេខារបស់កំណត់ហេតុ។")),
             ...out.timestamped.map((t: { authority: string; noLaterThan: string }) => leg(true, say(`Timestamp: ${t.authority}`, `ត្រាពេលវេលា៖ ${t.authority}`), say(`No later than ${when(t.noLaterThan)}`, `មិនយឺតជាង ${when(t.noLaterThan)}`))),
             ...out.timestampFailures.map((t: { authority: string; why: string }) => leg(false, say(`Timestamp: ${t.authority}`, `ត្រាពេលវេលា៖ ${t.authority}`), t.why)),
-            ...out.bitcoin.map((b: { height: number; time: number }) => leg(true, "Bitcoin", say(`Block ${n(b.height)}`, `ប្លុក ${n(b.height)}`))),
-            ...(out.bitcoinUnchecked ?? []).map((height: number) => leg(null, "Bitcoin", say(`The proof names block ${n(height)}. This page doesn't fetch Bitcoin blocks, so the verifier below checks it.`, `ភស្តុតាងដាក់ឈ្មោះប្លុក ${n(height)}។ ទំព័រនេះមិនទាញយកប្លុក Bitcoin ទេ ដូច្នេះកម្មវិធីផ្ទៀងផ្ទាត់ខាងក្រោមពិនិត្យវា។`))),
-            (out.bitcoinPending?.length ?? 0) > 0 ? leg(null, "Bitcoin", say("Waiting for a block. This takes a few hours.", "កំពុងរង់ចាំប្លុក។ វាចំណាយពេលពីរបីម៉ោង។")) : null),
+            ...out.bitcoin.map((b: { height: number; time: number }) => leg(true, "Bitcoin", blockLink(b.height))),
+            ...(out.bitcoinUnchecked ?? []).map((height: number) => leg(null, "Bitcoin", blockLink(height), say("The proof names this block. This page doesn't fetch Bitcoin blocks, so the verifier below checks it.", "ភស្តុតាងដាក់ឈ្មោះប្លុកនេះ។ ទំព័រនេះមិនទាញយកប្លុក Bitcoin ទេ ដូច្នេះកម្មវិធីផ្ទៀងផ្ទាត់ខាងក្រោមពិនិត្យវា។"))),
+            (out.bitcoinPending?.length ?? 0) > 0 ? leg(null, "Bitcoin", say("Waiting for a block. This takes a few hours.", "កំពុងរង់ចាំប្លុក។ វាចំណាយពេលពីរបីម៉ោង។")) : null,
+            !pack.stamps?.ots ? leg(null, "Bitcoin", say("The log is stamped to Bitcoin once a day, and this record joins the next stamp. A few hours later that proof reaches a block.", "កំណត់ហេតុត្រូវបានបោះត្រាទៅ Bitcoin ម្តងក្នុងមួយថ្ងៃ ហើយកំណត់ត្រានេះចូលរួមក្នុងការបោះត្រាបន្ទាប់។ ពីរបីម៉ោងក្រោយមក ភស្តុតាងនោះទៅដល់ប្លុក។")) : null),
         card(h("h2", {}, say("What a record can't show", "អ្វីដែលកំណត់ត្រាមិនអាចបង្ហាញបាន")), h("p", {}, say("Who imagined the work. A record shows only who signed it, and when.", "អ្នកណាបានគិតស្នាដៃនេះ។ កំណត់ត្រាបង្ហាញតែអ្នកណាបានចុះហត្ថលេខា និងពេលណាប៉ុណ្ណោះ។"))),
         card(h("h2", {}, say("Check it yourself", "ពិនិត្យដោយខ្លួនឯង")), code(`npx @333eco/origin-verify record ${index}`), h("button", { type: "button", class: "btn ghost", onclick: download }, say("Download this record's proof", "ទាញយកភស្តុតាងកំណត់ត្រានេះ"))),
         link("/origin", say("All records", "កំណត់ត្រាទាំងអស់")));
@@ -168,9 +170,10 @@ async function corpusPage() {
     const box = h("div", {}), input = h("input", { type: "search", value: filter, "aria-label": say("Search by title", "ស្វែងរកតាមចំណងជើង"), placeholder: say("Search by title", "ស្វែងរកតាមចំណងជើង"), oninput: (e: Event) => { filter = (e.target as HTMLInputElement).value; shownDocs = PAGE; fill(); } });
     const fill = () => {
         const q = filter.trim().toLowerCase(), hits = q ? list.filter((d) => d.title.toLowerCase().includes(q) || d.slug.includes(q) || d.sha256.startsWith(q.replace(/\s/g, ""))) : list;
-        box.replaceChildren(h("p", { class: "fine" }, say(`${n(hits.length)} documents`, `${n(hits.length)} ឯកសារ`)), card(...hits.slice(0, shownDocs).map((d) => link(`/corpus/${d.slug}`, h("span", { class: "ex-row" }, h("b", {}, d.title), h("span", {}, `${genre(d.genre)} · ${date(d.date)} · `, h("span", { class: "ex-mono" }, short(d.sha256))),
-            h("span", { class: "ex-chips" }, d.opentimestamps ? h("span", { class: "pill on" }, "Bitcoin") : null, d.doi ? h("span", { class: "pill on" }, "DOI") : null))))),
-            hits.length > shownDocs ? h("button", { type: "button", class: "btn ghost ex-more", onclick: () => { shownDocs += PAGE; fill(); } }, say("Show more", "បង្ហាញបន្ថែម")) : null);
+        box.replaceChildren(...([h("p", { class: "fine ex-count" }, say(hits.length === 1 ? "1 document" : `${n(hits.length)} documents`, `${n(hits.length)} ឯកសារ`)),
+            ...hits.slice(0, shownDocs).map((d) => h("a", { class: "card ex-doc", href: `/corpus/${d.slug}` }, h("b", {}, d.title), h("span", {}, `${genre(d.genre)} · ${date(d.date)} · `, h("span", { class: "ex-mono" }, short(d.sha256))),
+                h("span", { class: "ex-chips" }, d.opentimestamps ? h("span", { class: "pill on" }, "Bitcoin") : null, d.doi ? h("span", { class: "pill on" }, "DOI") : null))),
+            hits.length > shownDocs ? h("button", { type: "button", class: "btn ghost ex-more", onclick: () => { shownDocs += PAGE; fill(); } }, say("Show more", "បង្ហាញបន្ថែម")) : null].filter(Boolean) as Node[]));
     };
     fill();
     view.replaceChildren(title, h("form", { class: "ex-search", role: "search", onsubmit: (e: Event) => e.preventDefault() }, input), box);
@@ -197,7 +200,7 @@ async function liveLegs(d: Doc, into: HTMLElement) {
                 const seen = await checkOts(new Uint8Array(await r.arrayBuffer()), digest);
                 if (!seen.ok) return put("btc", leg(null, "Bitcoin", say("The repository's proof is for a newer version of the text than this index.", "ភស្តុតាងរបស់ឃ្លាំងគឺសម្រាប់កំណែថ្មីជាងនៃអត្ថបទជាងសន្ទស្សន៍នេះ។"), " ", link(proofUrl, say("The proof", "ភស្តុតាង"))));
                 const heights: number[] = seen.bitcoin.map((a: { height: number }) => a.height);
-                put("btc", heights.length ? leg(null, "Bitcoin", say(`The proof commits to this text and names block ${n(Math.min(...heights))}. This page doesn't fetch Bitcoin blocks, so confirm the block with the OpenTimestamps tool: `, `ភស្តុតាងបញ្ជាក់អត្ថបទនេះ ហើយដាក់ឈ្មោះប្លុក ${n(Math.min(...heights))}។ ទំព័រនេះមិនទាញយកប្លុក Bitcoin ទេ ដូច្នេះសូមបញ្ជាក់ប្លុកដោយឧបករណ៍ OpenTimestamps៖ `), link(proofUrl, say("the proof", "ភស្តុតាង")))
+                put("btc", heights.length ? leg(null, "Bitcoin", blockLink(Math.min(...heights)), say("The proof commits to this text and names this block. This page doesn't fetch Bitcoin blocks, so confirm it with the OpenTimestamps tool: ", "ភស្តុតាងបញ្ជាក់អត្ថបទនេះ ហើយដាក់ឈ្មោះប្លុកនេះ។ ទំព័រនេះមិនទាញយកប្លុក Bitcoin ទេ ដូច្នេះសូមបញ្ជាក់វាដោយឧបករណ៍ OpenTimestamps៖ "), link(proofUrl, say("the proof", "ភស្តុតាង")))
                     : leg(null, "Bitcoin", say("Waiting for a block. This takes a few hours. ", "កំពុងរង់ចាំប្លុក។ វាចំណាយពេលពីរបីម៉ោង។ "), link(proofUrl, say("The proof", "ភស្តុតាង"))));
             } catch { put("btc", leg(null, "Bitcoin", say("The proof can't be read right now, so this wasn't checked.", "មិនអាចអានភស្តុតាងបានឥឡូវនេះទេ ដូច្នេះនេះមិនត្រូវបានពិនិត្យទេ។"))); }
         })(),
@@ -233,7 +236,7 @@ async function docPage(slug: string) {
         d.doi ? leg(null, "Zenodo", link(`https://doi.org/${d.doi}`, d.doi), " · ", d.archive_matches_today ? say("The corpus index says the archived copy matches this text. Compare it yourself at the link.", "សន្ទស្សន៍ឯកសារនិយាយថាច្បាប់ចម្លងដែលបានរក្សាទុកត្រូវនឹងអត្ថបទនេះ។ សូមប្រៀបធៀបដោយខ្លួនឯងតាមតំណ។") : say("The archived copy is an earlier version.", "ច្បាប់ចម្លងដែលបានរក្សាទុកគឺជាកំណែមុន។")) : null,
         leg(null, say("Corpus index", "សន្ទស្សន៍ឯកសារ"), say("corpus.333.eco serves this fingerprint.", "corpus.333.eco ផ្តល់ស្នាមម្រាមដៃនេះ។")), h("p", { class: "fine ex-gap" }, say("A tick means it was checked on this page just now. No tick means it's stated, with where to check it.", "សញ្ញាធីកមានន័យថាបានពិនិត្យនៅលើទំព័រនេះមុននេះបន្តិច។ គ្មានសញ្ញាធីកមានន័យថាវាត្រូវបាននិយាយ ជាមួយកន្លែងដែលត្រូវពិនិត្យ។")));
     view.replaceChildren(head(d.title, `${genre(d.genre)} · ${date(d.date)} · ${d.licence}`),
-        card(h("dl", { class: "ex-kv" }, h("dt", {}, say("Fingerprint (SHA-256)", "ស្នាមម្រាមដៃ (SHA-256)")), h("dd", { class: "ex-mono" }, full(d.sha256)), h("dt", {}, say("Source", "ប្រភព")), h("dd", {}, d.source_url ? link(d.source_url, d.path) : d.path)), d.read_at ? h("p", { class: "ex-gap" }, link(`https://${d.read_at}`, say("Read it", "អានវា"))) : null),
+        card(h("dl", { class: "ex-kv" }, h("dt", {}, say("Fingerprint (SHA-256)", "ស្នាមម្រាមដៃ (SHA-256)")), h("dd", { class: "ex-mono" }, full(d.sha256)), h("dt", {}, say("Source", "ប្រភព")), h("dd", {}, d.source_url ? link(d.source_url, d.path) : d.path)), d.read_at ? h("p", { class: "ex-gap" }, link(/^https?:\/\//.test(d.read_at) ? d.read_at : `https://${d.read_at}`, say("Read it", "អានវា"))) : null),
         legs, card(h("p", {}, say("A timestamp proves when this text existed. It never proves that the text is true.", "ត្រាពេលវេលាបង្ហាញថាអត្ថបទនេះមាននៅពេលណា។ វាមិនដែលបង្ហាញថាអត្ថបទនេះពិតទេ។"))), link("/corpus", say("All documents", "ឯកសារទាំងអស់")));
     await liveLegs(d, legs);
 }
@@ -249,7 +252,7 @@ function route(): { name: "origin" } | { name: "record"; index: number } | { nam
 function paint() {
     const r = route(), area = r.name === "corpus" || r.name === "doc" ? "corpus" : "origin";
     document.querySelectorAll<HTMLElement>("[data-nav]").forEach((a) => { if (a.dataset.nav === area) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
-    document.title = `${r.name === "record" ? say(`Record #${r.index}`, `កំណត់ត្រា #${r.index}`) : area === "corpus" ? say("Corpus", "សារពើភ័ណ្ឌឯកសារ") : say("B-Origin records", "កំណត់ត្រា B-Origin")} · Explorer`;
+    document.title = `${r.name === "record" ? say(`Record #${r.index}`, `កំណត់ត្រា #${r.index}`) : area === "corpus" ? say("Corpus", "សារពើភ័ណ្ឌឯកសារ") : say("Records", "កំណត់ត្រា")} · B-Explorer`;
     const run = r.name === "record" ? recordPage(r.index) : r.name === "doc" ? docPage(r.slug) : r.name === "corpus" ? corpusPage() : originPage();
     run.catch((e) => view.replaceChildren(card(leg(false, say("That didn't work", "វាមិនដំណើរការទេ"), String(e.message ?? e)))));
 }
