@@ -16,3 +16,4 @@ a.ex-doc{display:block;text-decoration:none;color:inherit;margin-bottom:10px}a.e
 .ex-first{border-top:0;border-left:3px solid var(--accent);background:var(--wash);border-radius:0 12px 12px 0;padding:11px 12px;margin:0 0 4px}
 .ex-ver .ex-chips{margin:4px 0 0}.ex-ver .ex-chips:empty{display:none}
 .ex-note{font-style:italic}
+.ex-kinds{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}.ex-kinds .pill{font:inherit;font-size:13px;padding:6px 12px;background:none;cursor:pointer}.ex-kinds .pill.on{background:var(--wash)}
