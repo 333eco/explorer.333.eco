@@ -27,7 +27,7 @@ html,body{margin:0;background:var(--bg)}
 body{color:var(--ink);font:15px/1.5 var(--font-text);-webkit-font-smoothing:antialiased}
 html[lang=km] body{font-family:var(--font-khmer),var(--font-text);line-height:1.7}
 a{color:var(--accent)}
-.app{max-width:26rem;margin:0 auto;padding:0 20px 28px;min-height:100vh;display:flex;flex-direction:column}
+.app{max-width:44rem;margin:0 auto;padding:0 20px 28px;min-height:100vh;display:flex;flex-direction:column}
 header{display:flex;align-items:center;justify-content:space-between;padding:18px 0 10px}
 .wordmark{font-weight:600;font-size:1.15rem;white-space:nowrap;letter-spacing:-.01em;
   --emblem-cap:.68em;--emblem-size:calc(var(--emblem-cap)*1.1);--emblem-box:calc(var(--emblem-size)/.7534)}

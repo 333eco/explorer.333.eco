@@ -1,5 +1,4 @@
 /* B-Origin's landing page. Tokens come from hb.css; everything here is this app's own. */
-.app.lp{max-width:44rem}
 .lp-status:empty{display:none}
 .lp-status p{margin:6px 0 0;color:var(--ink-dim);font-size:13.5px;text-align:center}
 .lp-hero{text-align:center;padding:clamp(28px,8vw,64px) 0 clamp(20px,5vw,36px);background:radial-gradient(closest-side at 50% 42%,var(--wash),transparent)}
