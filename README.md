@@ -5,4 +5,6 @@ Read-only pages over public data: B-Origin's log (log.333.eco) and the corpus (c
 - `npm run build` writes `dist/`. `npm run drive` runs it in real Chrome against the real log, with a tampered-log control.
 - Deploy: `npm run build && npx wrangler pages deploy` (Cloudflare Pages, direct upload; no build there, no Functions).
 - ⛔ A tick means it was checked on the page just now. Anything else is stated, with where to check it.
+- A paper's page reads its history in the browser: every `.rN.ots` proof beside the text, each proof's earliest block from mempool.space, each version's text from GitHub (hashed to the proof's fingerprint), Zenodo's first version and the Internet Archive's first capture. GitHub allows 60 unauthenticated calls an hour per network, and each paper uses two; past that the links are left out and the page says so.
+- ⛔ "Earliest proof" and "Public by" stay apart, and the page never says *prior art*: a proof shows a text existed, not that anyone could read it (`project_publication_strategy`), and the dates belong to the earliest version only.
 - ⛔ No rates, rankings or counters. The gratitude ledger's page waits for the ledger; outside witnesses are named once they exist.

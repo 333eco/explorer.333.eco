@@ -72,11 +72,11 @@ html[lang=km] .l-en,html:not([lang=km]) .l-km{display:none!important}
 .wordmark-link{text-decoration:none;color:inherit}
 .head-end{display:inline-flex;align-items:center;gap:8px;flex:none}
 .head-btn{padding:4px 11px;font-size:12.5px;border-radius:var(--r-pill);white-space:nowrap}
-/* An app's own header (B-Origin): the wordmark, the app's name in the true center, the controls. On a phone the name takes its own centered row. */
+/* An app's own header (B-Origin): the wordmark, the app's name in the true center, the controls. On a phone the name takes its own row, aligned left. */
 header.has-name{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
 header.has-name .head-end{justify-self:end}
 .app-name{font-weight:650;font-size:1rem;color:var(--ink);white-space:nowrap;text-decoration:none;text-align:center}
-@media (max-width:560px){header.has-name{grid-template-columns:auto auto;row-gap:6px}header.has-name .app-name{grid-row:2;grid-column:1/-1}}
+@media (max-width:560px){header.has-name{grid-template-columns:auto auto;row-gap:6px}header.has-name .app-name{grid-row:2;grid-column:1/-1;justify-self:start;text-align:left}}
 .nav{display:flex;gap:2px;margin:2px 0 10px;border-bottom:1px solid var(--line);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .nav::-webkit-scrollbar{display:none}
 .nav a{padding:8px 11px;font-size:14px;font-weight:600;color:var(--ink-dim);text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
