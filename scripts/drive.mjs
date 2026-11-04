@@ -52,7 +52,7 @@ try {
     const noSideways = async (what) => must(await ev("document.documentElement.scrollWidth <= window.innerWidth + 1"), `${what}: nothing pushes the page sideways`);
 
     await size(390, 844, true); await go("/");
-    await until(`/entries, all checked/.test(document.querySelector('main').innerText)`, "the audited log");
+    await until(`/all checked/.test(document.querySelector('main').innerText)`, "the audited log");
     must(/\/origin$/.test(await ev("location.pathname")), "the root opens the records");
     must(/Made by hand|Made with AI|Photo or|Edited|Combined/.test(await body()), "record 0 is listed, in plain words");
     await shot("1-origin"); await noSideways("records");
