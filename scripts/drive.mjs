@@ -1,6 +1,7 @@
 // The built site in real Chrome against the real log and corpus, served as Cloudflare Pages serves it (its _headers CSP, its fallback). Each check has a control: a tampered log must fail out loud.
 //   node scripts/drive.mjs [out-dir]
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -56,6 +57,11 @@ try {
     const body = () => ev("document.querySelector('main').innerText");
     const noSideways = async (what) => must(await ev("document.documentElement.scrollWidth <= window.innerWidth + 1"), `${what}: nothing pushes the page sideways`);
 
+    {   // The zone holds .js and .css for 4 hours, so every local asset's address must carry its own hash.
+        const shell = readFileSync(join(root, "index.html"), "utf8"), assets = [...shell.matchAll(/(?:src|href)="\/([\w.-]+\.(?:js|css))\?v=([0-9a-f]{10})"/g)];
+        must(assets.length >= 7 && !/(?:src|href)="\/[\w.-]+\.(?:js|css)"/.test(shell), `every script and stylesheet is addressed by its hash (${assets.length})`);
+        must(assets.every(([, f, v]) => createHash("sha256").update(readFileSync(join(root, f))).digest("hex").startsWith(v)), "and each hash is of the file served");
+    }
     await size(390, 844, true); await go("/");
     await until(`/all checked/.test(document.querySelector('main').innerText)`, "the audited log");
     must(/\/origin$/.test(await ev("location.pathname")), "the root opens the records"); must(await ev(`document.title==='Records · B-Explorer' && document.querySelector('h1').textContent==='Records' && /B-Explorer/.test(document.querySelector('.app-name').textContent) && /B-Origin℠/.test(document.querySelector('.nav').textContent)`), "the names are as ruled");
