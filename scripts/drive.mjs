@@ -69,7 +69,7 @@ try {
     await shot("1-origin"); await noSideways("records");
     await ev(`document.querySelector('table a').click()`); await until(`/Checked in your browser/.test(document.querySelector('main').innerText)`, "the record");
     const rec = await body();
-    must(/It is in the log/.test(rec) && /Timestamp:/.test(rec), "a record's proof and timestamps are checked here"); must(/Bitcoin/.test(rec), "a record always says where it stands with Bitcoin"); must(await ev(`[...document.querySelectorAll('.ex-leg b')].filter(b=>/Bitcoin/.test(b.textContent)).length`) === 1, "Bitcoin has one row (the found bug: three, for one block)"); must(/What a record can.t show/.test(rec), "and it says its limit");
+    must(/It is in the log/.test(rec) && /Timestamp:/.test(rec), "a record's proof and timestamps are checked here"); must(/Bitcoin/.test(rec), "a record always says where it stands with Bitcoin"); must(await ev(`[...document.querySelectorAll('.ex-leg b')].filter(b=>/Bitcoin/.test(b.textContent)).length`) === 1, "Bitcoin has one row (the found bug: three, for one block)"); must(await ev(`(()=>{const t=[...document.querySelectorAll('.ex-leg b')].map(b=>b.textContent);return t.findIndex(x=>/Bitcoin/.test(x))===t.findIndex(x=>/It is in the log/.test(x))+1})()`), "and it sits right under It is in the log"); must(await ev(`(()=>{const a=[...document.querySelectorAll('.ex-leg a')].find(a=>/Block /.test(a.textContent));return !a||getComputedStyle(a).fontSize===getComputedStyle(a.parentElement).fontSize})()`), "its block reads as ordinary text"); must(/What a record can.t show/.test(rec), "and it says its limit");
     must(!/witness/i.test(rec.replace(/signature on this entry/i, "")), "⛔ no word about outside witnesses");
     must(!/\bnull\b|undefined/.test(rec), "no stray null on the page"); await shot("2-record"); await noSideways("record"); console.log(rec.split("\n").filter((l) => /Timestamp|Bitcoin|block|later/i.test(l)).join(" | ").slice(0, 400));
     await go("/origin/999999"); await until(`/doesn.t have this entry/.test(document.querySelector('main').innerText)`, "a missing record's plain answer"); must(true, "a record that doesn't exist says so");
@@ -90,7 +90,7 @@ try {
     await go("/corpus/a-promise-that-cannot-grow"); await until(`!/Checking…/.test(document.querySelector('main').innerText) && /Its fingerprint/.test(document.querySelector('main').innerText)`, "the live legs");
     const doc = await body(); console.log(doc.split("\n").filter(Boolean).slice(0, 26).join(" | ").slice(0, 900));
     must(/hashed here just now/.test(doc), "today's text was hashed here and matches"); must(/manifest/.test(doc), "the timestamp manifest was read"); must(/never proves that the text is true/.test(doc), "and it says its limit"); must(!/deposit/i.test(doc), "⛔ never *deposit*");
-    must(await ev(`[...document.querySelectorAll('.ex-ok')].every(x=>/fingerprint|authorities|Bitcoin|Version|Earliest proof/.test(x.textContent))`), "⛔ a tick only on what this page really checked"); must(await ev(`/^https:\\/\\/mempool\\.space\\/block\\/\\d+$/.test(document.querySelector('a.ex-block')?.href)`), "the block is a link to a Bitcoin explorer"); must(await ev(`parseFloat(getComputedStyle(document.querySelector('a.ex-block')).fontSize)>=22`), "and it's prominent"); await shot("5-doc"); await noSideways("doc");
+    must(await ev(`[...document.querySelectorAll('.ex-ok')].every(x=>/fingerprint|authorities|Bitcoin|Version|Earliest proof/.test(x.textContent))`), "⛔ a tick only on what this page really checked"); must(await ev(`/^https:\\/\\/mempool\\.space\\/block\\/\\d+$/.test([...document.querySelectorAll('.ex-leg a')].find(a=>/Block /.test(a.textContent))?.href)`), "the block is a link to a Bitcoin explorer"); must(await ev(`(()=>{const a=[...document.querySelectorAll('.ex-leg a')].find(a=>/Block /.test(a.textContent));return getComputedStyle(a).fontSize===getComputedStyle(a.parentElement).fontSize&&getComputedStyle(a).fontWeight===getComputedStyle(a.parentElement).fontWeight})()`), "and it reads as ordinary text (ruled 2026-11-04: not prominent)"); await shot("5-doc"); await noSideways("doc");
     await go("/corpus/first-letter-to-miss-aquarius"); await until(`[...document.querySelectorAll('main a')].some(a=>/Read it/.test(a.textContent))`, "a letter");
     must(await ev(`[...document.querySelectorAll('main a')].find(a=>/Read it/.test(a.textContent)).href==='https://missaquarius.org/letters/first.html'`), "a letter's Read it is one good address (the found bug: https://https//)");
     await go("/corpus/a-promise-that-cannot-grow"); await until(`[...document.querySelectorAll('main a')].some(a=>/Read it/.test(a.textContent))`, "a paper"); must(await ev(`[...document.querySelectorAll('main a')].find(a=>/Read it/.test(a.textContent)).href==='https://thonly.org/research/a-promise-that-cannot-grow'`), "CONTROL: a paper's address without a scheme still works");
@@ -109,6 +109,12 @@ try {
         const page = await body(); console.log(page.split("\n").filter((l) => /Earliest proof:|Public by|first captured|first version on|history starts/.test(l)).join(" | ").slice(0, 500));
         must(/Public by/.test(page) && /kept apart/.test(page), "the proof and the public date are kept apart"); must(!/prior art/i.test(page), "⛔ the page never says prior art");
         must(await ev(`[...document.querySelectorAll('.ex-ver a')].filter(a=>/Read this version/.test(a.textContent)).every(a=>/github\\.com\\/thonly\\/publications\\/blob\\/[0-9a-f]{40}\\//.test(a.href))`), "a version's text links to its own commit");
+        const mirror = join(dir, "submitted/manifest.json");
+        if (existsSync(mirror)) { // the date on the page, against the manifest read here; and a paper that was never mirrored says nothing
+            const e = JSON.parse(readFileSync(mirror, "utf8")).entries.find((x) => x.slug === slug), first = [e, ...(e?.prior_postings ?? [])].filter((p) => p?.posted).map((p) => p.posted).sort()[0];
+            const says = new Date(first).toLocaleDateString("en", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
+            must(first && page.includes(`TDCommons posted it on ${says}`), `TDCommons's first posting is read from the public manifest (${first})`);
+        }
         await size(390, 844, true); await shot("10-versions"); await noSideways("versions");
         await cdp("Fetch.enable", { patterns: [{ urlPattern: "*mempool.space*" }, { urlPattern: "*api.github.com*" }] });
         tamperBlock = true; await go(`/corpus/${slug}`); await until(`document.querySelector('.ex-ver .ex-bad')`, "a tampered block");
@@ -117,6 +123,8 @@ try {
         must(await ev(`document.querySelectorAll('.ex-ver').length`) === rows, "CONTROL: GitHub refusing keeps every proof's row and says what's missing");
         githubOut = false; await cdp("Fetch.disable"); await cdp("Network.setCacheDisabled", { cacheDisabled: false });
     }
+    await go("/corpus/how-to-change-the-world"); await until(`/Public by/.test(document.querySelector('main').innerText) && !/Reading…/.test(document.querySelector('main').innerText)`, "an essay's dates");
+    must(!/TDCommons/.test(await body()), "CONTROL: an essay was never mirrored, so it names no TDCommons posting");
     await go("/corpus/no-such-paper"); await until(`/no document by that name/.test(document.querySelector('main').innerText)`, "a missing paper"); must(true, "a paper that doesn't exist says so");
     await go("/corpus/a-promise-that-cannot-grow"); await until(`!/Checking…/.test(document.querySelector('main').innerText) && /Today/.test(document.querySelector('main').innerText)`, "again");
     await ev(`document.querySelector('button[data-lang=km]').click()`); await until(`document.documentElement.lang==='km' && /ត្រាពេលវេលា/.test(document.querySelector('main').innerText)`, "Khmer"); await sleep(1500); await shot("6-doc-km");
