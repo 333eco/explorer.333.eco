@@ -27,7 +27,14 @@ function h(tag: string, attrs: Record<string, string | boolean | ((e: any) => vo
 const link = (href: string, ...kids: Kid[]) => h("a", { href, ...(href.startsWith("http") ? { rel: "noopener" } : {}) }, ...kids);
 const short = (s: string) => `${s.slice(0, 4)} ${s.slice(4, 8)} ${s.slice(8, 12)} … ${s.slice(-4)}`;
 const full = (s: string) => s.replace(/(.{4})/g, "$1 ").trim();
-const date = (iso: string) => { const d = new Date(iso); return isNaN(+d) ? iso : d.toLocaleDateString(document.documentElement.lang, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }); };
+// The index carries a few dates in words ("9 June 2026"). As text they sort above every ISO date, and parsed as local time they read a day early east of UTC.
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+const dayOf = (s: string | null | undefined) => {
+    const iso = /^\d{4}-\d{2}-\d{2}/.exec(s ?? ""); if (iso) return iso[0];
+    const w = /^(\d{1,2}) ([A-Za-z]+) (\d{4})$/.exec((s ?? "").trim()), m = w ? MONTHS.indexOf(w[2].toLowerCase()) : -1;
+    return w && m >= 0 ? `${w[3]}-${String(m + 1).padStart(2, "0")}-${w[1].padStart(2, "0")}` : "";
+};
+const date = (raw: string) => { const iso = /^\d{1,2} [A-Za-z]+ \d{4}$/.test(raw.trim()) ? dayOf(raw) || raw : raw; const d = new Date(iso); return isNaN(+d) ? iso : d.toLocaleDateString(document.documentElement.lang, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }); };
 const when = (iso: string) => { const d = new Date(iso); return isNaN(+d) ? iso : `${d.toLocaleString(document.documentElement.lang, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" })} UTC`; };
 const n = (x: number) => x.toLocaleString(document.documentElement.lang);
 const count = (x: number, one: string, many: string) => `${n(x)} ${x === 1 ? one : many}`;
@@ -43,6 +50,7 @@ const head = (title: string, lede?: string) => h("div", {}, h("h1", {}, title), 
 const card = (...kids: Kid[]) => h("div", { class: "card" }, ...kids);
 const leg = (ok: boolean | null, title: string, ...body: Kid[]) => h("div", { class: "ex-leg" }, h("b", { class: ok === true ? "ex-ok" : ok === false ? "ex-bad" : "" }, title), h("p", {}, ...body));
 const blockLink = (height: number) => link(`https://mempool.space/block/${height}`, say(`Block ${n(height)}`, `ប្លុក ${n(height)}`));
+const tickNote = () => h("p", { class: "fine ex-gap ex-note" }, say("A tick means it was checked on this page just now. No tick means it's stated, with where to check it.", "សញ្ញាធីកមានន័យថាបានពិនិត្យនៅលើទំព័រនេះមុននេះបន្តិច។ គ្មានសញ្ញាធីកមានន័យថាវាត្រូវបាននិយាយ ជាមួយកន្លែងដែលត្រូវពិនិត្យ។"));
 const code = (s: string) => h("pre", { class: "code" }, h("code", {}, s));
 /** A block's 80-byte header from mempool.space, read once per height. null when it can't be read: the proof then stays unchecked, never failed. */
 const blockHeaders = new Map<number, Promise<Uint8Array | null>>();
@@ -178,7 +186,7 @@ async function recordPage(index: number) {
             leg(true, say("The signature on this entry", "ហត្ថលេខាលើធាតុនេះ")), leg(true, say("It is in the log", "វានៅក្នុងកំណត់ហេតុ"), pack.inclusion.length ? say(`${count(pack.inclusion.length, "hash leads", "hashes lead")} from this entry to the log's signed root.`, `${n(pack.inclusion.length)} ហាសនាំពីធាតុនេះទៅឫសដែលបានចុះហត្ថលេខារបស់កំណត់ហេតុ។`) : say("It's the only entry so far, so it is the log's signed root.", "វាជាធាតុតែមួយគត់រហូតមកដល់ពេលនេះ ដូច្នេះវាជាឫសដែលបានចុះហត្ថលេខារបស់កំណត់ហេតុ។")),
             bitcoinRow(out, !!pack.stamps?.ots),
             ...out.timestamped.map((t: { authority: string; noLaterThan: string }) => leg(true, say(`Timestamp: ${t.authority}`, `ត្រាពេលវេលា៖ ${t.authority}`), say(`No later than ${when(t.noLaterThan)}`, `មិនយឺតជាង ${when(t.noLaterThan)}`))),
-            ...out.timestampFailures.map((t: { authority: string; why: string }) => leg(false, say(`Timestamp: ${t.authority}`, `ត្រាពេលវេលា៖ ${t.authority}`), t.why))),
+            ...out.timestampFailures.map((t: { authority: string; why: string }) => leg(false, say(`Timestamp: ${t.authority}`, `ត្រាពេលវេលា៖ ${t.authority}`), t.why)), tickNote()),
         card(h("h2", {}, say("What a record can't show", "អ្វីដែលកំណត់ត្រាមិនអាចបង្ហាញបាន")), h("p", {}, say("Who imagined the work. A record shows only who signed it, and when.", "អ្នកណាបានគិតស្នាដៃនេះ។ កំណត់ត្រាបង្ហាញតែអ្នកណាបានចុះហត្ថលេខា និងពេលណាប៉ុណ្ណោះ។"))),
         card(h("h2", {}, say("Check it yourself", "ពិនិត្យដោយខ្លួនឯង")), code(`npx @333eco/origin-verify record ${index}`), h("button", { type: "button", class: "btn ghost", onclick: download }, say("Download this record's proof", "ទាញយកភស្តុតាងកំណត់ត្រានេះ"))),
         link("/origin", say("All records", "កំណត់ត្រាទាំងអស់")));
@@ -193,7 +201,7 @@ async function readDocs() {
     if (docs) return docs;
     const r = await fetch(INDEX);
     if (!r.ok) throw new Error(String(r.status));
-    docs = ((await r.json()).documents as Doc[]).sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "") || a.title.localeCompare(b.title));
+    docs = ((await r.json()).documents as Doc[]).sort((a, b) => dayOf(b.date).localeCompare(dayOf(a.date)) || a.title.localeCompare(b.title));
     return docs;
 }
 const cantRead = (title: Node) => view.replaceChildren(title, card(leg(false, say("The corpus index can't be read right now", "មិនអាចអានសន្ទស្សន៍ឯកសារបានឥឡូវនេះទេ"), say("Try again in a little while.", "សូមសាកល្បងម្តងទៀតបន្តិចក្រោយ។"))));
@@ -402,7 +410,7 @@ async function docPage(slug: string) {
     const waiting = (key: string, t: string) => { const x = leg(null, t, say("Checking…", "កំពុងពិនិត្យ…")); x.dataset.leg = key; return x; };
     const legs = card(h("h2", {}, say("Today's text", "អត្ថបទថ្ងៃនេះ")), waiting("today", say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា")), waiting("btc", "Bitcoin"), waiting("tsa", say("Timestamp authorities", "អាជ្ញាធរបោះត្រាពេលវេលា")),
         d.doi ? leg(null, "Zenodo", link(`https://doi.org/${d.doi}`, d.doi), " · ", d.archive_matches_today ? say("The corpus index says the archived copy matches this text. Compare it yourself at the link.", "សន្ទស្សន៍ឯកសារនិយាយថាច្បាប់ចម្លងដែលបានរក្សាទុកត្រូវនឹងអត្ថបទនេះ។ សូមប្រៀបធៀបដោយខ្លួនឯងតាមតំណ។") : say("The archived copy is an earlier version.", "ច្បាប់ចម្លងដែលបានរក្សាទុកគឺជាកំណែមុន។")) : null,
-        leg(null, say("Corpus index", "សន្ទស្សន៍ឯកសារ"), say("corpus.333.eco serves this fingerprint.", "corpus.333.eco ផ្តល់ស្នាមម្រាមដៃនេះ។")), h("p", { class: "fine ex-gap" }, say("A tick means it was checked on this page just now. No tick means it's stated, with where to check it.", "សញ្ញាធីកមានន័យថាបានពិនិត្យនៅលើទំព័រនេះមុននេះបន្តិច។ គ្មានសញ្ញាធីកមានន័យថាវាត្រូវបាននិយាយ ជាមួយកន្លែងដែលត្រូវពិនិត្យ។")));
+        leg(null, say("Corpus index", "សន្ទស្សន៍ឯកសារ"), say("corpus.333.eco serves this fingerprint.", "corpus.333.eco ផ្តល់ស្នាមម្រាមដៃនេះ។")), tickNote());
     const earlyBox = h("div", {}), versionsBox = h("div", {});
     const paint = () => { const x = histories.get(d.slug)?.x; if (!x || route().name !== "doc") return; earlyBox.replaceChildren(howEarly(x)); const v = versionsCard(d, x); if (v) versionsBox.replaceChildren(v); else versionsBox.replaceChildren(); };
     view.replaceChildren(head(d.title, `${genre(d.genre)} · ${date(d.date)} · ${d.licence}`),

@@ -69,7 +69,7 @@ try {
     await shot("1-origin"); await noSideways("records");
     await ev(`document.querySelector('table a').click()`); await until(`/Checked in your browser/.test(document.querySelector('main').innerText)`, "the record");
     const rec = await body();
-    must(/It is in the log/.test(rec) && /Timestamp:/.test(rec), "a record's proof and timestamps are checked here"); must(/Bitcoin/.test(rec), "a record always says where it stands with Bitcoin"); must(await ev(`[...document.querySelectorAll('.ex-leg b')].filter(b=>/Bitcoin/.test(b.textContent)).length`) === 1, "Bitcoin has one row (the found bug: three, for one block)"); must(await ev(`(()=>{const t=[...document.querySelectorAll('.ex-leg b')].map(b=>b.textContent);return t.findIndex(x=>/Bitcoin/.test(x))===t.findIndex(x=>/It is in the log/.test(x))+1})()`), "and it sits right under It is in the log"); must(await ev(`(()=>{const a=[...document.querySelectorAll('.ex-leg a')].find(a=>/Block /.test(a.textContent));return !a||getComputedStyle(a).fontSize===getComputedStyle(a.parentElement).fontSize})()`), "its block reads as ordinary text"); must(/What a record can.t show/.test(rec), "and it says its limit");
+    must(/It is in the log/.test(rec) && /Timestamp:/.test(rec), "a record's proof and timestamps are checked here"); must(/Bitcoin/.test(rec), "a record always says where it stands with Bitcoin"); must(await ev(`[...document.querySelectorAll('.ex-leg b')].filter(b=>/Bitcoin/.test(b.textContent)).length`) === 1, "Bitcoin has one row (the found bug: three, for one block)"); must(await ev(`(()=>{const t=[...document.querySelectorAll('.ex-leg b')].map(b=>b.textContent);return t.findIndex(x=>/Bitcoin/.test(x))===t.findIndex(x=>/It is in the log/.test(x))+1})()`), "and it sits right under It is in the log"); must(await ev(`(()=>{const a=[...document.querySelectorAll('.ex-leg a')].find(a=>/Block /.test(a.textContent));return !a||getComputedStyle(a).fontSize===getComputedStyle(a.parentElement).fontSize})()`), "its block reads as ordinary text"); must(await ev(`getComputedStyle([...document.querySelectorAll('.ex-note')].find(p=>/A tick means/.test(p.textContent))).fontStyle==='italic'`), "the tick notice is on the record, in italics"); must(/What a record can.t show/.test(rec), "and it says its limit");
     must(!/witness/i.test(rec.replace(/signature on this entry/i, "")), "⛔ no word about outside witnesses");
     must(!/\bnull\b|undefined/.test(rec), "no stray null on the page"); await shot("2-record"); await noSideways("record"); console.log(rec.split("\n").filter((l) => /Timestamp|Bitcoin|block|later/i.test(l)).join(" | ").slice(0, 400));
     await go("/origin/999999"); await until(`/doesn.t have this entry/.test(document.querySelector('main').innerText)`, "a missing record's plain answer"); must(true, "a record that doesn't exist says so");
@@ -122,6 +122,16 @@ try {
         tamperBlock = false; githubOut = true; await go(`/corpus/${slug}`); await until(`/GitHub.s limit/.test(document.querySelector('main').innerText)`, "GitHub's limit");
         must(await ev(`document.querySelectorAll('.ex-ver').length`) === rows, "CONTROL: GitHub refusing keeps every proof's row and says what's missing");
         githubOut = false; await cdp("Fetch.disable"); await cdp("Network.setCacheDisabled", { cacheDisabled: false });
+    }
+    {   // Newest first, with the index's dates in words among them: the found bug put all of them on top.
+        const got = await ev(`fetch('https://corpus.333.eco/provenance.json').then(r=>r.json()).then(j=>j.documents.map(d=>d.date))`), words = got.filter((x) => /^\d{1,2} [A-Z]/.test(x));
+        must(words.length > 0, `CONTROL: the index still holds dates in words (${words.length}), so the next check can fail`);
+        await size(1280, 800, false); await go("/corpus"); await until(`document.querySelector('.ex-doc')`, "the list");
+        const shown = await ev(`[...document.querySelectorAll('a.card.ex-doc > span:first-of-type')].map(s=>s.textContent.split(' · ')[1]).map(t=>+new Date(t+' UTC')).filter(Boolean)`);
+        must(shown.length >= 20 && shown.every((t, i) => !i || shown[i - 1] >= t), "the list runs newest first");
+        await go("/corpus/third-letter-to-miss-aquarius"); await until(`document.querySelector('.lede')`, "a letter");
+        must(/Jun 9, 2026/.test(await ev(`document.querySelector('.lede').textContent`)), "a date in words reads as written, whatever the reader's time zone");
+        await size(390, 844, true);
     }
     await go("/corpus/how-to-change-the-world"); await until(`/Public by/.test(document.querySelector('main').innerText) && !/Reading…/.test(document.querySelector('main').innerText)`, "an essay's dates");
     must(!/TDCommons/.test(await body()), "CONTROL: an essay was never mirrored, so it names no TDCommons posting");
