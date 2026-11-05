@@ -238,7 +238,7 @@ async function corpusPage() {
             hits.length > shownDocs ? h("button", { type: "button", class: "btn ghost ex-more", onclick: () => { shownDocs += PAGE; fill(); } }, say("Show more", "បង្ហាញបន្ថែម")) : null].filter(Boolean) as Node[]));
     };
     fill();
-    view.replaceChildren(title, h("form", { class: "ex-search", role: "search", onsubmit: (e: Event) => e.preventDefault() }, input), kinds, box);
+    view.replaceChildren(title, kinds, h("form", { class: "ex-search", role: "search", onsubmit: (e: Event) => e.preventDefault() }, input), box);
 }
 const sha256 = async (b: Uint8Array) => new Uint8Array(await crypto.subtle.digest("SHA-256", b as BufferSource));
 const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");

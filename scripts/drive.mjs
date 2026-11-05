@@ -146,7 +146,7 @@ try {
         await ev(`(()=>{const i=document.querySelector('input[type=search]');i.value='change';i.dispatchEvent(new Event('input'));})()`); await sleep(100); must((await genres()).length === 1 && /change/i.test(await body()), "search stays inside the filter"); await ev(`(()=>{const i=document.querySelector('input[type=search]');i.value='';i.dispatchEvent(new Event('input'));})()`);
         await ev(`document.querySelector('a.card.ex-doc').click()`); await until(`/How early/.test(document.querySelector('main').innerText)`, "a document"); await cdp("Page.navigate", { url: "http://localhost:8798/corpus?kind=essays" }); await until(`document.querySelector('.ex-kinds .pill.on')?.textContent==='Essays'`, "the shared address"); must(true, "a shared address opens filtered");
         await press("Other"); await sleep(100); must((await ev(`document.querySelectorAll('a.card.ex-doc').length`)) === 3, "Other holds the three that fit no kind"); await press("All"); await sleep(100); must(!(await ev("location.search")), "All clears the address");
-        await noSideways("filter"); await shot("11-filter");
+        must(await ev(`document.querySelector('.ex-kinds').getBoundingClientRect().bottom<=document.querySelector('input[type=search]').getBoundingClientRect().top`), "the filters sit above the search box"); await noSideways("filter"); await shot("11-filter");
     }
     await go("/corpus/how-to-change-the-world"); await until(`/Public by/.test(document.querySelector('main').innerText) && !/Reading…/.test(document.querySelector('main').innerText)`, "an essay's dates");
     must(!/TDCommons/.test(await body()), "CONTROL: an essay was never mirrored, so it names no TDCommons posting");
