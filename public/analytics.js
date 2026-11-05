@@ -36,6 +36,10 @@
     } catch (e) {
         deviceId = "anon";
     }
+    // login.333.eco gives this cookie to a founder account's browser when it logs in, so his own visits don't ring his phone.
+    // One bit and no identity: nobody else ever gets it, and all anyone gains by forging it is not ringing that phone.
+    var admin = /(?:^|;\s*)ma-admin=1(?:;|$)/.test(document.cookie);
+
     function post(event, data) {
         try {
             fetch(ENDPOINT, {
@@ -49,7 +53,8 @@
                     // A369: true under automation (navigator.webdriver — /safari's
                     // simulator, a headless crawler). /api/track stores it, the
                     // admin push skips the row and /estate classes it machine.
-                    wd: navigator.webdriver === true
+                    wd: navigator.webdriver === true,
+                    admin: admin
                 }),
                 keepalive: true
             }).catch(function () {});
