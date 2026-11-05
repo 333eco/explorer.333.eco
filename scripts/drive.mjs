@@ -183,6 +183,29 @@ try {
     must(!/TDCommons/.test(await body()), "CONTROL: an essay was never mirrored, so it names no TDCommons posting");
     await go("/corpus/no-such-paper"); await until(`/no document by that name/.test(document.querySelector('main').innerText)`, "a missing paper"); must(true, "a paper that doesn't exist says so");
     await go("/corpus/a-promise-that-cannot-grow"); await until(`!/Checking…/.test(document.querySelector('main').innerText) && /Today/.test(document.querySelector('main').innerText)`, "again");
+    {   // Title and subtitle, against every document the index serves, read from the page's own origin.
+        await go("/corpus"); await until(`document.querySelector('.ex-doc')`, "the list");
+        const index = await ev(`fetch('https://corpus.333.eco/provenance.json').then(r=>r.json()).then(j=>j.documents)`);
+        const expect = (d) => d.genre === "letters" ? [d.title, ""] : d.subtitle ? [d.title, d.subtitle] : d.title.includes(": ") ? [d.title.slice(0, d.title.indexOf(": ")), d.title.slice(d.title.indexOf(": ") + 2)] : [d.title, ""];
+        must(index.filter((d) => d.subtitle && d.genre !== "letters").length > 50 && index.some((d) => !d.subtitle && d.title.includes(": ")) && index.some((d) => !d.subtitle && !d.title.includes(": ")), "CONTROL: the index holds declared subtitles, colons and titles with neither, so the next check can fail");
+        for (let i = 0; i < 10 && await ev(`!!document.querySelector('.ex-more')`); i++) await ev(`document.querySelector('.ex-more').click()`);
+        const cards = new Map((await ev(`[...document.querySelectorAll('a.card.ex-doc')].map(a=>[a.getAttribute('href').split('/').pop(),a.querySelector('b').textContent,a.querySelector('.ex-sub')?.textContent??''])`)).map(([slug, b, s]) => [slug, [b, s]]));
+        const clean = (s) => s.replace(/\\"/g, '"').replace(/\*/g, ""), wrong = index.filter((d) => { const e = expect(d), c = cards.get(d.slug); return !c || c[0] !== e[0] || c[1] !== clean(e[1]); });
+        must(cards.size === index.length && wrong.length === 0, `every card reads its own title and subtitle, word for word (${cards.size}${wrong.length ? `; wrong: ${wrong.slice(0, 4).map((d) => d.slug).join(", ")}` : ""})`);
+        const main = () => ev(`[document.querySelector('h1').textContent,document.querySelector('.ex-sub')?.textContent??'']`);
+        must(/^What a Vow Must Cost: Vow-Validity/.test((await ev(`document.querySelector('a[href="/corpus/what-a-vow-must-cost"] b').textContent`))), "a declared subtitle leaves the colon in the title");
+        must(await ev(`document.querySelector('a[href="/corpus/the-capacity-to-give"] b').textContent==='The Capacity to Give'`), "with none declared, the colon starts the subtitle");
+        must(await ev(`!document.querySelector('a[href="/corpus/the-pond-at-night"] .ex-sub') && !document.querySelector('a[href="/corpus/first-letter-to-miss-aquarius"] .ex-sub')`), "a paper with no subtitle and a letter show none");
+        must(await ev(`document.querySelector('a[href="/corpus/future-kindness-operating-noun"] .ex-sub em')?.textContent==='"Thank Your Future Kindness"' && ![...document.querySelectorAll('.ex-sub')].some(p=>/[\\\\*]/.test(p.textContent))`), "front matter's italics and escapes don't show");
+        const clamp = `(()=>{const p=document.querySelector('a[href="/corpus/proof-of-coordinate"] .ex-sub');return p.scrollHeight>p.clientHeight&&p.clientHeight<100})()`;
+        must(await ev(clamp), "the list holds a long subtitle to three lines"); await noSideways("the list with subtitles"); await shot("12-subtitles-phone");
+        await size(1280, 800, false); await sleep(100); await shot("13-subtitles-desktop"); await size(390, 844, true);
+        const search = (q) => ev(`(()=>{const i=document.querySelector('input[type=search]');i.value=${JSON.stringify(q)};i.dispatchEvent(new Event('input'));return [...document.querySelectorAll('a.card.ex-doc')].map(a=>a.getAttribute('href').split('/').pop());})()`);
+        must(!index.find((d) => d.slug === "a-vow-you-could-have-refused").title.includes("Doctors Swear") && (await search("doctors swear")).includes("a-vow-you-could-have-refused"), "search reaches words only a subtitle holds"); await search("");
+        await go("/corpus/the-capacity-to-give"); await until(`document.querySelector('.lede')`, "a paper"); { const [a, b] = await main(); must(a === "The Capacity to Give" && /^Why People Come/.test(b), "a paper's page shows both lines"); }
+        await go("/corpus/proof-of-coordinate"); await until(`document.querySelector('.lede')`, "a long subtitle"); must(await ev(`(()=>{const p=document.querySelector('.ex-sub');return p.scrollHeight<=p.clientHeight+1&&p.textContent.length>400})()`), "and holds nothing back there"); await noSideways("a long subtitle"); await shot("14-subtitle-doc");
+        await go("/corpus/first-letter-to-miss-aquarius"); await until(`document.querySelector('.lede')`, "a letter"); must(!(await ev(`!!document.querySelector('.ex-sub')`)), "a letter's page repeats no date");
+    }
     await ev(`document.querySelector('button[data-lang=km]').click()`); await until(`document.documentElement.lang==='km' && /ត្រាពេលវេលា/.test(document.querySelector('main').innerText)`, "Khmer"); await sleep(1500); await shot("6-doc-km");
     await go("/origin"); await until(`document.querySelector('table')`, "records in Khmer"); await shot("7-origin-km"); await ev(`document.querySelector('button[data-lang=en]').click()`); await until(`document.querySelector('table')`, "records"); await dark(true); await shot("8-origin-dark"); await dark(false);
     await size(1280, 800, false); await go("/corpus"); await until(`document.querySelector('.ex-doc')`, "desktop corpus"); await shot("9-corpus-desktop");

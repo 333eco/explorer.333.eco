@@ -201,7 +201,7 @@ async function recordPage(index: number) {
 }
 
 /* ─────────────── Corpus ─────────────── */
-interface Doc { slug: string; title: string; genre: string; date: string; repo: string; path: string; licence: string; sha256: string; doi: string | null; archive_matches_today: boolean | null; opentimestamps: boolean; source_url: string | null; read_at: string | null }
+interface Doc { slug: string; title: string; subtitle?: string | null; genre: string; date: string; repo: string; path: string; licence: string; sha256: string; doi: string | null; archive_matches_today: boolean | null; opentimestamps: boolean; source_url: string | null; read_at: string | null }
 let docs: Doc[] | null = null, filter = "", shownDocs = PAGE;
 // One filter, by kind. In the address, so a filtered list can be shared and Back returns to it. No counts on the buttons: this site keeps no counters.
 const KINDS: [string, string, string, string[]][] = [
@@ -211,6 +211,17 @@ const KINDS: [string, string, string, string[]][] = [
 const kindNow = () => { const k = new URLSearchParams(location.search).get("kind") ?? ""; return KINDS.some((x) => x[0] === k) ? k : ""; };
 const GENRES: Record<string, [string, string]> = { "defensive-publications": ["Defensive publication", "ការបោះពុម្ពការពារ"], essays: ["Essay", "អត្ថបទ"], positions: ["Position", "ជំហរ"], "white-papers": ["White paper", "ឯកសារស"], letters: ["Letter", "លិខិត"], program: ["Program", "កម្មវិធី"], about: ["About", "អំពី"] };
 const genre = (g: string) => GENRES[g]?.[isKm() ? 1 : 0] ?? g;
+/** A paper's two lines. A subtitle it declares sits under its whole title, as on the paper's own page; with none declared, a colon marks where one starts. A letter's subtitle is only its date, already on the line below. */
+const titleLines = (d: Doc): [string, string | null] => {
+    if (d.genre === "letters") return [d.title, null];
+    if (d.subtitle) return [d.title, d.subtitle.replace(/\\"/g, '"')];
+    const at = d.title.indexOf(": ");
+    return at < 0 ? [d.title, null] : [d.title.slice(0, at), d.title.slice(at + 2)];
+};
+/** The index holds a subtitle as its front matter wrote it, so *these* are italics. */
+const subtitleLine = (s: string) => h("p", { class: "ex-sub" }, ...s.split(/\*([^*]+)\*/).map((x, i) => (i % 2 ? h("em", {}, x) : x)));
+const cardTitle = (d: Doc) => { const [main, sub] = titleLines(d); return [h("b", {}, main), sub ? subtitleLine(sub) : null]; };
+const docHead = (d: Doc, lede: string) => { const [main, sub] = titleLines(d); return h("div", {}, h("h1", {}, main), sub ? subtitleLine(sub) : null, h("p", { class: "lede" }, lede)); };
 async function readDocs() {
     if (docs) return docs;
     const r = await fetch(INDEX);
@@ -230,10 +241,10 @@ async function corpusPage() {
     const box = h("div", {}), input = h("input", { type: "search", value: filter, "aria-label": say("Search by title", "ស្វែងរកតាមចំណងជើង"), placeholder: say("Search by title", "ស្វែងរកតាមចំណងជើង"), oninput: (e: Event) => { filter = (e.target as HTMLInputElement).value; shownDocs = PAGE; fill(); } });
     const fill = () => {
         const genres = KINDS.find((x) => x[0] === kind)![3], kept = genres.length ? list.filter((d) => genres.includes(d.genre)) : list;
-        const q = filter.trim().toLowerCase(), hits = q ? kept.filter((d) => d.title.toLowerCase().includes(q) || d.slug.includes(q) || d.sha256.startsWith(q.replace(/\s/g, ""))) : kept;
+        const q = filter.trim().toLowerCase(), hits = q ? kept.filter((d) => `${d.title} ${titleLines(d)[1] ?? ""}`.replace(/\*/g, "").toLowerCase().includes(q) || d.slug.includes(q) || d.sha256.startsWith(q.replace(/\s/g, ""))) : kept;
         kinds.replaceChildren(...KINDS.map(([k, en, km]) => h("button", { type: "button", class: k === kind ? "pill on" : "pill", "aria-pressed": k === kind ? "true" : "false", onclick: () => { kind = k; shownDocs = PAGE; history.replaceState(null, "", k ? `/corpus?kind=${k}` : "/corpus"); fill(); } }, say(en, km))));
         box.replaceChildren(...([h("p", { class: "fine ex-count" }, say(hits.length === 1 ? "1 document" : `${n(hits.length)} documents`, `${n(hits.length)} ឯកសារ`)),
-            ...hits.slice(0, shownDocs).map((d) => h("a", { class: "card ex-doc", href: `/corpus/${d.slug}` }, h("b", {}, d.title), h("span", {}, `${genre(d.genre)} · ${date(d.date)} · `, h("span", { class: "ex-mono" }, short(d.sha256))),
+            ...hits.slice(0, shownDocs).map((d) => h("a", { class: "card ex-doc", href: `/corpus/${d.slug}` }, ...cardTitle(d), h("span", {}, `${genre(d.genre)} · ${date(d.date)} · `, h("span", { class: "ex-mono" }, short(d.sha256))),
                 h("span", { class: "ex-chips" }, d.opentimestamps ? h("span", { class: "pill on" }, "Bitcoin") : null, d.doi ? h("span", { class: "pill on" }, "DOI") : null))),
             hits.length > shownDocs ? h("button", { type: "button", class: "btn ghost ex-more", onclick: () => { shownDocs += PAGE; fill(); } }, say("Show more", "បង្ហាញបន្ថែម")) : null].filter(Boolean) as Node[]));
     };
@@ -431,7 +442,7 @@ async function docPage(slug: string) {
         leg(null, say("Corpus index", "សន្ទស្សន៍ឯកសារ"), say("corpus.333.eco serves this fingerprint.", "corpus.333.eco ផ្តល់ស្នាមម្រាមដៃនេះ។")));
     const earlyBox = h("div", {}), versionsBox = h("div", {});
     const paint = () => { const x = histories.get(d.slug)?.x; if (!x || route().name !== "doc") return; earlyBox.replaceChildren(howEarly(x)); const v = versionsCard(d, x); if (v) versionsBox.replaceChildren(v); else versionsBox.replaceChildren(); };
-    view.replaceChildren(head(d.title, `${genre(d.genre)} · ${date(d.date)} · ${d.licence}`),
+    view.replaceChildren(docHead(d, `${genre(d.genre)} · ${date(d.date)} · ${d.licence}`),
         card(h("dl", { class: "ex-kv" }, h("dt", {}, say("Fingerprint (SHA-256)", "ស្នាមម្រាមដៃ (SHA-256)")), h("dd", { class: "ex-mono" }, full(d.sha256)), h("dt", {}, say("Source", "ប្រភព")), h("dd", {}, d.source_url ? link(viewHref(d.source_url), d.path) : d.path)), d.read_at ? h("p", { class: "ex-gap" }, link(/^https?:\/\//.test(d.read_at) ? d.read_at : `https://${d.read_at}`, say("Read it", "អានវា"))) : null),
         earlyBox, versionsBox, legs, tickNote(), card(h("p", {}, say("A timestamp proves when this text existed. It never proves that the text is true.", "ត្រាពេលវេលាបង្ហាញថាអត្ថបទនេះមាននៅពេលណា។ វាមិនដែលបង្ហាញថាអត្ថបទនេះពិតទេ។")), h("p", { class: "fine ex-gap" }, say("Your browser reads this page's dates directly from mempool.space, GitHub, Zenodo and the Internet Archive.", "កម្មវិធីរុករករបស់អ្នកអានកាលបរិច្ឆេទនៃទំព័រនេះដោយផ្ទាល់ពី mempool.space, GitHub, Zenodo និង Internet Archive។"))), link("/corpus", say("All documents", "ឯកសារទាំងអស់")));
     historyOf(d, paint);
@@ -481,7 +492,7 @@ async function viewPage(src: string, entry: number | null) {
     }
     if (what.kind === "doc") {
         const d = what.doc, got = hex(await sha256(bytes));
-        return view.replaceChildren(head(d.title, say("This document's text, as its public repository holds it.", "អត្ថបទនៃឯកសារនេះ ដូចដែលឃ្លាំងសាធារណៈរបស់វារក្សាទុក។")),
+        return view.replaceChildren(docHead(d, say("This document's text, as its public repository holds it.", "អត្ថបទនៃឯកសារនេះ ដូចដែលឃ្លាំងសាធារណៈរបស់វារក្សាទុក។")),
             card(got === d.sha256 ? leg(true, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា"), say("This text was hashed here just now, and it matches the index.", "អត្ថបទនេះត្រូវបានហាសនៅទីនេះមុននេះបន្តិច ហើយវាត្រូវនឹងសន្ទស្សន៍។")) : leg(null, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា"), say("This text is newer than the index, or differs from it. The index catches up when a change finishes its chain.", "អត្ថបទនេះថ្មីជាងសន្ទស្សន៍ ឬខុសពីវា។ សន្ទស្សន៍តាមទាន់នៅពេលការផ្លាស់ប្តូរបញ្ចប់ខ្សែសង្វាក់របស់វា។")),
                 h("p", { class: "ex-mono ex-gap" }, full(got)), raw(text(bytes), true)), tickNote(), openOriginal(src), link(`/corpus/${d.slug}`, say("Back to its page", "ត្រឡប់ទៅទំព័ររបស់វា")));
     }
