@@ -3,7 +3,7 @@
  * ⛔ No ranking, no counters that climb, no rates. ⛔ No word about outside witnesses until they exist (A515). The gratitude ledger's page waits for the ledger. DRAFT Khmer (ours).
  */
 // @ts-expect-error the published verifier ships no types
-import { auditLog, checkOts, checkpointBody, checkTimestamp, findRecords, packRecord, readEntries, verifyPack } from "@333eco/origin-verify";
+import { auditLog, checkCheckpoint, checkOts, checkpointBody, checkTimestamp, findRecords, packRecord, readEntries, verifyPack } from "@333eco/origin-verify";
 // @ts-expect-error the same
 import { canvasDecoder, hashFile } from "@333eco/origin-verify/media";
 // @ts-expect-error the same
@@ -160,7 +160,7 @@ async function originPage() {
     const withdrawn = withdrawnOf(l), recs = l.entries.filter((e) => e.t === "record").reverse(), page = recs.slice(0, shown);
     const stamped = [...new Set([...(l.stamps.tsa ?? []), ...(l.stamps.ots ?? [])])].filter((s) => s > 0).sort((a, b) => b - a).slice(0, 12);
     view.replaceChildren(title, searchBox(l), results() ?? h("span", {}),
-        card(leg(true, say(`${count(l.size, "entry", "entries")}, all checked`, `${n(l.size)} ធាតុ បានពិនិត្យទាំងអស់`), say("The log's signature, its tree, and each entry's signature were checked in your browser. ", "ហត្ថលេខារបស់កំណត់ហេតុ មែកធាងរបស់វា និងហត្ថលេខារបស់ធាតុនីមួយៗត្រូវបានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នក។ "), source(`${LOG}checkpoint`))),
+        card(leg(true, say(`${count(l.size, "entry", "entries")}, all checked`, `${n(l.size)} ធាតុ បានពិនិត្យទាំងអស់`), say("The log's signature, its tree, and each entry's signature were checked in your browser. ", "ហត្ថលេខារបស់កំណត់ហេតុ មែកធាងរបស់វា និងហត្ថលេខារបស់ធាតុនីមួយៗត្រូវបានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នក។ "), source(viewHref(`${LOG}checkpoint`)))),
         card(h("h2", {}, say("Records, newest first", "កំណត់ត្រា ថ្មីបំផុតមុន")), h("div", { class: "ex-scroll" }, h("table", { class: "ex-table" },
             h("thead", {}, h("tr", {}, h("th", {}, "#"), h("th", {}, say("Signed (UTC)", "បានចុះហត្ថលេខា (UTC)")), h("th", {}, say("How it was made", "របៀបបង្កើត")), h("th", {}, say("File fingerprint", "ស្នាមម្រាមដៃឯកសារ")))),
             h("tbody", {}, ...page.map((e) => h("tr", {}, h("td", {}, link(`/origin/${e.index}`, n(e.index))), h("td", {}, date(e.witnessedAt ?? "")), h("td", {}, label(e.claim!.source), withdrawn.has(e.index) ? h("div", { class: "fine" }, say("Withdrawn by the signer", "អ្នកចុះហត្ថលេខាបានដកចេញ")) : null), h("td", { class: "ex-mono" }, short(e.claim!.sha256))))))),
@@ -191,7 +191,7 @@ async function recordPage(index: number) {
         card(h("dl", { class: "ex-kv" }, ...row(say("Signed with", "បានចុះហត្ថលេខាដោយ"), say("a HeartBank® passkey", "passkey HeartBank®")), ...row(say("When", "ពេលណា"), when(e.witnessedAt!)), ...row(say("How it was made", "របៀបបង្កើត"), label(c.source)),
             ...(c.rights ? row(say("Shared under", "ចែករំលែកក្រោម"), c.rights) : []), ...row(say("Signed through", "ចុះហត្ថលេខាតាមរយៈ"), c.tool, true), ...row(say("File fingerprint", "ស្នាមម្រាមដៃឯកសារ"), full(c.sha256), true))),
         card(h("h2", {}, say("Checked in your browser", "បានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នក")),
-            leg(true, say("The signature on this entry", "ហត្ថលេខាលើធាតុនេះ"), source(viewHref(entryTile(index, out.size), index))), leg(true, say("It is in the log", "វានៅក្នុងកំណត់ហេតុ"), source(`${LOG}checkpoint`), " · ", pack.inclusion.length ? say(`${count(pack.inclusion.length, "hash leads", "hashes lead")} from this entry to the log's signed root.`, `${n(pack.inclusion.length)} ហាសនាំពីធាតុនេះទៅឫសដែលបានចុះហត្ថលេខារបស់កំណត់ហេតុ។`) : say("It's the only entry so far, so it is the log's signed root.", "វាជាធាតុតែមួយគត់រហូតមកដល់ពេលនេះ ដូច្នេះវាជាឫសដែលបានចុះហត្ថលេខារបស់កំណត់ហេតុ។")),
+            leg(true, say("The signature on this entry", "ហត្ថលេខាលើធាតុនេះ"), source(viewHref(entryTile(index, out.size), index))), leg(true, say("It is in the log", "វានៅក្នុងកំណត់ហេតុ"), source(viewHref(`${LOG}checkpoint`)), " · ", pack.inclusion.length ? say(`${count(pack.inclusion.length, "hash leads", "hashes lead")} from this entry to the log's signed root.`, `${n(pack.inclusion.length)} ហាសនាំពីធាតុនេះទៅឫសដែលបានចុះហត្ថលេខារបស់កំណត់ហេតុ។`) : say("It's the only entry so far, so it is the log's signed root.", "វាជាធាតុតែមួយគត់រហូតមកដល់ពេលនេះ ដូច្នេះវាជាឫសដែលបានចុះហត្ថលេខារបស់កំណត់ហេតុ។")),
             bitcoinRow(out, !!pack.stamps?.ots, viewHref(`${LOG}stamps/${pack.stamps?.ots?.size}.ots`)),
             ...out.timestamped.map((t: { authority: string; noLaterThan: string }) => leg(true, say(`Timestamp: ${t.authority}`, `ត្រាពេលវេលា៖ ${t.authority}`), say(`No later than ${when(t.noLaterThan)} · `, `មិនយឺតជាង ${when(t.noLaterThan)} · `), source(viewHref(`${LOG}stamps/${pack.stamps?.tsa?.size}.${t.authority}.tsr`)))),
             ...out.timestampFailures.map((t: { authority: string; why: string }) => leg(false, say(`Timestamp: ${t.authority}`, `ត្រាពេលវេលា៖ ${t.authority}`), t.why)), tickNote()),
@@ -251,7 +251,7 @@ async function liveLegs(d: Doc, into: HTMLElement) {
             try {
                 const r = await fetch(d.source_url!); if (!r.ok) throw new Error();
                 const got = hex(await sha256(new Uint8Array(await r.arrayBuffer())));
-                put("today", got === d.sha256 ? leg(true, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា"), say("The repository's text has this fingerprint, hashed here just now. ", "អត្ថបទរបស់ឃ្លាំងមានស្នាមម្រាមដៃនេះ ដែលបានហាសនៅទីនេះមុននេះបន្តិច។ "), source(d.source_url!)) : leg(null, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា"), say("The repository's text is newer than this index. The index catches up when the change finishes its chain.", "អត្ថបទរបស់ឃ្លាំងថ្មីជាងសន្ទស្សន៍នេះ។ សន្ទស្សន៍តាមទាន់នៅពេលការផ្លាស់ប្តូរបញ្ចប់ខ្សែសង្វាក់របស់វា។")));
+                put("today", got === d.sha256 ? leg(true, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា"), say("The repository's text has this fingerprint, hashed here just now. ", "អត្ថបទរបស់ឃ្លាំងមានស្នាមម្រាមដៃនេះ ដែលបានហាសនៅទីនេះមុននេះបន្តិច។ "), source(viewHref(d.source_url!))) : leg(null, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា"), say("The repository's text is newer than this index. The index catches up when the change finishes its chain.", "អត្ថបទរបស់ឃ្លាំងថ្មីជាងសន្ទស្សន៍នេះ។ សន្ទស្សន៍តាមទាន់នៅពេលការផ្លាស់ប្តូរបញ្ចប់ខ្សែសង្វាក់របស់វា។")));
             } catch { put("today", leg(null, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា"), say("The repository can't be read right now, so this wasn't checked.", "មិនអាចអានឃ្លាំងបានឥឡូវនេះទេ ដូច្នេះនេះមិនត្រូវបានពិនិត្យទេ។"))); }
         })(),
         (async () => {
@@ -432,7 +432,7 @@ async function docPage(slug: string) {
     const earlyBox = h("div", {}), versionsBox = h("div", {});
     const paint = () => { const x = histories.get(d.slug)?.x; if (!x || route().name !== "doc") return; earlyBox.replaceChildren(howEarly(x)); const v = versionsCard(d, x); if (v) versionsBox.replaceChildren(v); else versionsBox.replaceChildren(); };
     view.replaceChildren(head(d.title, `${genre(d.genre)} · ${date(d.date)} · ${d.licence}`),
-        card(h("dl", { class: "ex-kv" }, h("dt", {}, say("Fingerprint (SHA-256)", "ស្នាមម្រាមដៃ (SHA-256)")), h("dd", { class: "ex-mono" }, full(d.sha256)), h("dt", {}, say("Source", "ប្រភព")), h("dd", {}, d.source_url ? link(d.source_url, d.path) : d.path)), d.read_at ? h("p", { class: "ex-gap" }, link(/^https?:\/\//.test(d.read_at) ? d.read_at : `https://${d.read_at}`, say("Read it", "អានវា"))) : null),
+        card(h("dl", { class: "ex-kv" }, h("dt", {}, say("Fingerprint (SHA-256)", "ស្នាមម្រាមដៃ (SHA-256)")), h("dd", { class: "ex-mono" }, full(d.sha256)), h("dt", {}, say("Source", "ប្រភព")), h("dd", {}, d.source_url ? link(viewHref(d.source_url), d.path) : d.path)), d.read_at ? h("p", { class: "ex-gap" }, link(/^https?:\/\//.test(d.read_at) ? d.read_at : `https://${d.read_at}`, say("Read it", "អានវា"))) : null),
         earlyBox, versionsBox, legs, card(h("p", {}, say("A timestamp proves when this text existed. It never proves that the text is true.", "ត្រាពេលវេលាបង្ហាញថាអត្ថបទនេះមាននៅពេលណា។ វាមិនដែលបង្ហាញថាអត្ថបទនេះពិតទេ។")), h("p", { class: "fine ex-gap" }, say("Your browser reads this page's dates directly from mempool.space, GitHub, Zenodo and the Internet Archive.", "កម្មវិធីរុករករបស់អ្នកអានកាលបរិច្ឆេទនៃទំព័រនេះដោយផ្ទាល់ពី mempool.space, GitHub, Zenodo និង Internet Archive។"))), link("/corpus", say("All documents", "ឯកសារទាំងអស់")));
     historyOf(d, paint);
     await liveLegs(d, legs);
@@ -442,6 +442,7 @@ async function docPage(slug: string) {
    Three of the files behind the Source links are binary or served as binary, so a browser only downloads them. This reads the same bytes here and says what they hold, beside the original. */
 const hexDump = (b: Uint8Array) => { const lines: string[] = []; for (let i = 0; i < b.length; i += 16) lines.push(`${i.toString(16).padStart(6, "0")}  ${hex(b.subarray(i, i + 16)).replace(/(..)/g, "$1 ").trim()}`); return lines.join("\n"); };
 const raw = (body: string, open = false) => h("details", open ? { open: true } : {}, h("summary", {}, say("The file itself", "ឯកសារផ្ទាល់")), h("pre", { class: "code ex-raw" }, h("code", {}, body)));
+const openOriginal = (src: string) => h("a", { class: "btn ghost", href: src, rel: "noopener" }, say("Open the original", "បើកឯកសារដើម"));
 const original = (src: string) => h("a", { class: "btn ghost", href: src, download: "" }, say("Download the original", "ទាញយកឯកសារដើម"));
 /** ⛔ Reads only the log's own proof files and the proofs beside the corpus's documents, so this page can't be made to show anything else under this address. */
 async function viewable(src: string) {
@@ -449,23 +450,41 @@ async function viewable(src: string) {
     if (u.protocol !== "https:" || u.search || u.hash) return null;
     if (u.host === "log.333.eco") {
         const ots = /^\/origin\/stamps\/(\d+)\.ots$/.exec(u.pathname), tsr = /^\/origin\/stamps\/(\d+)\.([a-z0-9-]+)\.tsr$/.exec(u.pathname), tile = /^\/origin\/tile\/entries\/((?:x\d{3}\/)*\d{3})(?:\.p\/\d{1,3})?$/.exec(u.pathname);
+        const note = /^\/origin\/checkpoint(?:s\/\d+)?$/.test(u.pathname);
+        if (note) return { kind: "checkpoint" as const };
         if (ots) return { kind: "ots" as const, size: Number(ots[1]) };
         if (tsr) return { kind: "tsr" as const, size: Number(tsr[1]), authority: tsr[2] };
         if (tile) return { kind: "tile" as const, first: Number(tile[1].replace(/[x/]/g, "")) * 256 };
         return null;
     }
     if (u.host !== "raw.githubusercontent.com") return null;
-    return (await readDocs()).some((d) => d.source_url && u.href.startsWith(d.source_url) && /^\.(?:r\d+\.)?ots$/.test(u.href.slice(d.source_url.length))) ? { kind: "ots" as const, size: null } : null;
+    const list = await readDocs(), doc = list.find((d) => d.source_url === u.href);
+    if (doc) return { kind: "doc" as const, doc };
+    return list.some((d) => d.source_url && u.href.startsWith(d.source_url) && /^\.(?:r\d+\.)?ots$/.test(u.href.slice(d.source_url.length))) ? { kind: "ots" as const, size: null } : null;
 }
 async function viewPage(src: string, entry: number | null) {
     const back = src.startsWith(LOG) ? link("/origin", say("All records", "កំណត់ត្រាទាំងអស់")) : link("/corpus", say("All documents", "ឯកសារទាំងអស់"));
     const title = (lede?: string) => head(say("A proof file", "ឯកសារភស្តុតាង"), lede);
     view.replaceChildren(title(), card(h("p", { role: "status" }, say("Reading the file…", "កំពុងអានឯកសារ…"))));
     const what = await viewable(src).catch(() => null);
-    if (!what) return view.replaceChildren(title(), card(leg(false, say("This page can't open that address", "ទំព័រនេះមិនអាចបើកអាសយដ្ឋាននោះបានទេ"), say("It reads only the log's proof files and the proofs of published documents.", "វាអានតែឯកសារភស្តុតាងរបស់កំណត់ហេតុ និងភស្តុតាងនៃឯកសារដែលបានបោះពុម្ពប៉ុណ្ណោះ។"))), link("/origin", say("All records", "កំណត់ត្រាទាំងអស់")));
+    if (!what) return view.replaceChildren(title(), card(leg(false, say("This page can't open that address", "ទំព័រនេះមិនអាចបើកអាសយដ្ឋាននោះបានទេ"), say("It reads only the log's own files, and the published documents and their proofs.", "វាអានតែឯកសាររបស់កំណត់ហេតុ និងឯកសារដែលបានបោះពុម្ព និងភស្តុតាងរបស់វាប៉ុណ្ណោះ។"))), link("/origin", say("All records", "កំណត់ត្រាទាំងអស់")));
     let bytes: Uint8Array;
     try { const r = await fetch(src); if (!r.ok) throw new Error(String(r.status)); bytes = new Uint8Array(await r.arrayBuffer()); }
     catch { return view.replaceChildren(title(), card(leg(null, say("The file can't be read right now", "មិនអាចអានឯកសារបានឥឡូវនេះទេ"), say("Try again in a little while, or download it.", "សូមសាកល្បងម្តងទៀតបន្តិចក្រោយ ឬទាញយកវា។"))), original(src), back); }
+    if (what.kind === "checkpoint") {
+        const note = text(bytes), got = await checkCheckpoint(note, trust).catch(() => ({ ok: false, why: say("It couldn't be read.", "មិនអាចអានវាបានទេ។") }) as any), [origin, size, root] = note.split("\n");
+        const others = Math.max(0, note.slice(note.indexOf("\n\n") + 2).split("\n").filter(Boolean).length - 1);
+        return view.replaceChildren(head(say("A checkpoint", "checkpoint"), say("The log's signed statement of how long it is and what its root hash is. Every record it holds leads to that root.", "សេចក្តីថ្លែងដែលបានចុះហត្ថលេខារបស់កំណត់ហេតុអំពីប្រវែងរបស់វា និងហាសឫសរបស់វា។ កំណត់ត្រានីមួយៗដែលវាផ្ទុកនាំទៅឫសនោះ។")),
+            card(got.ok ? leg(true, say("The log's signature", "ហត្ថលេខារបស់កំណត់ហេតុ"), say("Checked here against the log's published key.", "បានពិនិត្យនៅទីនេះធៀបនឹងសោដែលបានបោះពុម្ពរបស់កំណត់ហេតុ។")) : leg(false, say("The log's signature", "ហត្ថលេខារបស់កំណត់ហេតុ"), got.why ?? ""),
+                h("dl", { class: "ex-kv ex-gap" }, h("dt", {}, say("The log", "កំណត់ហេតុ")), h("dd", { class: "ex-mono" }, origin), h("dt", {}, say("Its size", "ទំហំរបស់វា")), h("dd", {}, count(Number(size), "entry", "entries")), h("dt", {}, say("Its root", "ឫសរបស់វា")), h("dd", { class: "ex-mono" }, root)),
+                others ? h("p", { class: "ex-gap" }, say(`The file holds ${count(others, "other signature", "other signatures")}. They aren't counted yet. `, `ឯកសារមានហត្ថលេខាផ្សេងទៀត ${n(others)}។ ពួកវាមិនទាន់ត្រូវបានរាប់ទេ។ `), link("https://origin.333.eco/docs#tree", say("How the log holds together", "របៀបដែលកំណត់ហេតុរក្សាភាពជាប់គ្នា"))) : null, tickNote(), raw(note, true)), openOriginal(src), back);
+    }
+    if (what.kind === "doc") {
+        const d = what.doc, got = hex(await sha256(bytes));
+        return view.replaceChildren(head(d.title, say("This document's text, as its public repository holds it.", "អត្ថបទនៃឯកសារនេះ ដូចដែលឃ្លាំងសាធារណៈរបស់វារក្សាទុក។")),
+            card(got === d.sha256 ? leg(true, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា"), say("This text was hashed here just now, and it matches the index.", "អត្ថបទនេះត្រូវបានហាសនៅទីនេះមុននេះបន្តិច ហើយវាត្រូវនឹងសន្ទស្សន៍។")) : leg(null, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា"), say("This text is newer than the index, or differs from it. The index catches up when a change finishes its chain.", "អត្ថបទនេះថ្មីជាងសន្ទស្សន៍ ឬខុសពីវា។ សន្ទស្សន៍តាមទាន់នៅពេលការផ្លាស់ប្តូរបញ្ចប់ខ្សែសង្វាក់របស់វា។")),
+                h("p", { class: "ex-mono ex-gap" }, full(got)), tickNote(), raw(text(bytes), true)), openOriginal(src), link(`/corpus/${d.slug}`, say("Back to its page", "ត្រឡប់ទៅទំព័ររបស់វា")));
+    }
     if (what.kind === "tile") {
         const items: { index: number; body: string }[] = [];
         for (let i = 0, at = 0; at + 2 <= bytes.length; i++) { const len = bytes[at] * 256 + bytes[at + 1], one = text(bytes.subarray(at + 2, at + 2 + len)); at += 2 + len; let body = one; try { body = JSON.stringify(JSON.parse(one), null, 2); } catch { /* shown as it is */ } items.push({ index: what.first + i, body }); }
@@ -477,7 +496,7 @@ async function viewPage(src: string, entry: number | null) {
         try { const note = await logGet(`checkpoints/${what.size}`); if (note) { body = new TextEncoder().encode(checkpointBody(text(note))); got = await checkTimestamp(bytes, body, ((trust as any).tsaRoots?.[what.authority] ?? []).map((r: string) => Uint8Array.from(atob(r), (c) => c.charCodeAt(0)))); } } catch { /* said below */ }
         return view.replaceChildren(title(say("A timestamp token. An outside authority signed the fingerprint of the log's checkpoint, and the time.", "សញ្ញាពេលវេលា។ អាជ្ញាធរខាងក្រៅបានចុះហត្ថលេខាលើស្នាមម្រាមដៃនៃ checkpoint របស់កំណត់ហេតុ និងពេលវេលា។")),
             card(got.ok ? leg(true, say(`${what.authority} signed it`, `${what.authority} បានចុះហត្ថលេខា`), say(`No later than ${when(got.time!)}`, `មិនយឺតជាង ${when(got.time!)}`)) : leg(false, say(`${what.authority} didn't check out`, `${what.authority} មិនឆ្លងការពិនិត្យទេ`), got.why ?? ""),
-                h("dl", { class: "ex-kv ex-gap" }, h("dt", {}, say("It covers", "វាគ្របដណ្តប់")), h("dd", {}, link(`${LOG}checkpoints/${what.size}`, say(`The checkpoint at ${n(what.size)} entries`, `checkpoint នៅ ${n(what.size)} ធាតុ`))), ...(body ? [h("dt", {}, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា")), h("dd", { class: "ex-mono" }, full(hex(await sha256(body))))] : [])), tickNote(), raw(hexDump(bytes))), original(src), back);
+                h("dl", { class: "ex-kv ex-gap" }, h("dt", {}, say("It covers", "វាគ្របដណ្តប់")), h("dd", {}, link(viewHref(`${LOG}checkpoints/${what.size}`), say(`The checkpoint at ${n(what.size)} entries`, `checkpoint នៅ ${n(what.size)} ធាតុ`))), ...(body ? [h("dt", {}, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា")), h("dd", { class: "ex-mono" }, full(hex(await sha256(body))))] : [])), tickNote(), raw(hexDump(bytes))), original(src), back);
     }
     const digest = otsDigest(bytes), digestBytes = digest ? Uint8Array.from(digest.match(/../g)!.map((c) => parseInt(c, 16))) : null;
     const seen = digestBytes ? await checkOts(bytes, digestBytes, { header: headerOf }) : { ok: false, why: say("This isn't an OpenTimestamps proof.", "នេះមិនមែនជាភស្តុតាង OpenTimestamps ទេ។") };
@@ -485,7 +504,7 @@ async function viewPage(src: string, entry: number | null) {
     const blocks = new Map<number, { verified: boolean | null; time?: string }>();
     for (const b of seen.bitcoin as { height: number; verified: boolean | null; time?: string }[]) { const had = blocks.get(b.height); if (!had || b.verified === true) blocks.set(b.height, b); }
     return view.replaceChildren(title(say("An OpenTimestamps proof. It holds no text, only the hash steps from a fingerprint up to a Bitcoin block.", "ភស្តុតាង OpenTimestamps។ វាមិនផ្ទុកអត្ថបទទេ មានតែជំហានហាសពីស្នាមម្រាមដៃទៅប្លុក Bitcoin។")),
-        card(h("dl", { class: "ex-kv" }, h("dt", {}, say("It covers", "វាគ្របដណ្តប់")), h("dd", {}, what.size === null ? link(src.replace(/\.(?:r\d+\.)?ots$/, ""), say("The document", "ឯកសារ")) : link(`${LOG}checkpoints/${what.size}`, say(`The checkpoint at ${n(what.size)} entries`, `checkpoint នៅ ${n(what.size)} ធាតុ`))), h("dt", {}, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា")), h("dd", { class: "ex-mono" }, full(digest!))),
+        card(h("dl", { class: "ex-kv" }, h("dt", {}, say("It covers", "វាគ្របដណ្តប់")), h("dd", {}, what.size === null ? link(viewHref(src.replace(/\.(?:r\d+\.)?ots$/, "")), say("The document", "ឯកសារ")) : link(viewHref(`${LOG}checkpoints/${what.size}`), say(`The checkpoint at ${n(what.size)} entries`, `checkpoint នៅ ${n(what.size)} ធាតុ`))), h("dt", {}, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា")), h("dd", { class: "ex-mono" }, full(digest!))),
             ...[...blocks].sort((a, b) => a[0] - b[0]).map(([height, b]) => leg(b.verified, "Bitcoin", blockLink(height), b.verified === true ? say(` · mined ${date(b.time!)}`, ` · បានជីកនៅ ${date(b.time!)}`) : b.verified === false ? say(" · this block doesn't hold this proof", " · ប្លុកនេះមិនមានភស្តុតាងនេះទេ") : say(" · the block couldn't be read just now", " · មិនអាចអានប្លុកបានឥឡូវនេះទេ"))),
             ...(seen.pending as string[]).map((c) => leg(null, say("Still waiting", "នៅតែរង់ចាំ"), say(`${c} hasn't reported a block in this copy.`, `${c} មិនទាន់រាយការណ៍ប្លុកក្នុងច្បាប់ចម្លងនេះទេ។`))),
             tickNote(), raw(hexDump(bytes))), original(src), back);
@@ -524,7 +543,7 @@ function route(): { name: "origin" } | { name: "record"; index: number } | { nam
 function paint() {
     const r = route(), area = r.name === "corpus" || r.name === "doc" || (r.name === "view" && !r.src.startsWith(LOG)) ? "corpus" : "origin";
     document.querySelectorAll<HTMLElement>("[data-nav]").forEach((a) => { if (a.dataset.nav === area) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
-    document.title = `${r.name === "view" ? say("A proof file", "ឯកសារភស្តុតាង") : r.name === "proof" ? say(`Proof of record #${r.index}`, `ភស្តុតាងនៃកំណត់ត្រា #${r.index}`) : r.name === "record" ? say(`Record #${r.index}`, `កំណត់ត្រា #${r.index}`) : area === "corpus" ? say("Corpus", "សារពើភ័ណ្ឌឯកសារ") : say("Records", "កំណត់ត្រា")} · B-Explorer`;
+    document.title = `${r.name === "view" ? say("A source file", "ឯកសារប្រភព") : r.name === "proof" ? say(`Proof of record #${r.index}`, `ភស្តុតាងនៃកំណត់ត្រា #${r.index}`) : r.name === "record" ? say(`Record #${r.index}`, `កំណត់ត្រា #${r.index}`) : area === "corpus" ? say("Corpus", "សារពើភ័ណ្ឌឯកសារ") : say("Records", "កំណត់ត្រា")} · B-Explorer`;
     const run = r.name === "view" ? viewPage(r.src, r.entry) : r.name === "proof" ? proofPage(r.index) : r.name === "record" ? recordPage(r.index) : r.name === "doc" ? docPage(r.slug) : r.name === "corpus" ? corpusPage() : originPage();
     run.catch((e) => view.replaceChildren(card(leg(false, say("That didn't work", "វាមិនដំណើរការទេ"), String(e.message ?? e)))));
 }

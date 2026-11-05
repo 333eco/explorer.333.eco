@@ -27,7 +27,7 @@ try {
     for (let i = 0; i < 50 && !target; i++) { await sleep(200); try { target = (await (await fetch("http://127.0.0.1:9336/json")).json()).find((t) => t.type === "page"); } catch {} }
     const ws = new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((r) => { ws.onopen = r; });
-    let id = 0, tamper = false, tamperBlock = false, githubOut = false; const wait = new Map(), errors = [];
+    let id = 0, tamper = false, tamperBlock = false, githubOut = false, tamperDoc = false; const wait = new Map(), errors = [];
     const cdp = (method, params = {}) => new Promise((r) => { const n = ++id; wait.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
     ws.onmessage = async (m) => {
         const d = JSON.parse(m.data);
@@ -39,6 +39,9 @@ try {
             if (tamperBlock && /mempool\.space\/api\/block\/[0-9a-f]+\/header/.test(url)) { // one changed byte in the block's merkle root
                 const hx = await (await fetch(url)).text(); const b = Buffer.from(hx.trim(), "hex"); b[40] ^= 1;
                 cdp("Fetch.fulfillRequest", { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: "Access-Control-Allow-Origin", value: "*" }], body: Buffer.from(b.toString("hex")).toString("base64") });
+            } else if (tamperDoc && /raw\.githubusercontent\.com/.test(url)) {
+                const b = Buffer.from(await (await fetch(url)).arrayBuffer()); b[b.length - 5] ^= 1;
+                cdp("Fetch.fulfillRequest", { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: "Access-Control-Allow-Origin", value: "*" }], body: b.toString("base64") });
             } else if (githubOut && /api\.github\.com/.test(url)) {
                 cdp("Fetch.fulfillRequest", { requestId: d.params.requestId, responseCode: 403, responseHeaders: [{ name: "Access-Control-Allow-Origin", value: "*" }], body: Buffer.from("{}").toString("base64") });
             } else if (tamper && /log\.333\.eco\/origin\/tile\/entries/.test(url)) { // one changed byte in a real entry
@@ -82,11 +85,15 @@ try {
         must(!/can.t open that address/.test(await body()) && /[?&]src=/.test(await ev("location.search")), "clicking a source opens it (a click keeps the address's file)");
         await ev(`history.back()`); await until(`/Checked in your browser/.test(document.querySelector('main').innerText)`, "Back to the record"); must(true, "Back returns to the record");
         const open = async (href) => { await go(href); await until(`!/Reading the file/.test(document.querySelector('main').innerText) && document.querySelector('main').innerText.length>40`, href); return body(); };
+        { const cp = hrefs.find((x) => /checkpoint/.test(decodeURIComponent(x))), note = await ev(`fetch('https://log.333.eco/origin/checkpoint').then(r=>r.text())`), [, size, root] = note.split("\n");
+          must(!!cp, "It is in the log's source opens in the viewer"); const page = await open(cp); must(/The log.s signature/.test(page) && await ev(`!!document.querySelector('.ex-ok')`) && page.includes(root) && page.includes(`${size} entr`), "a checkpoint reads as its signature (checked here), size and root");
+          must(/aren.t counted yet/.test(page), "and says the other signatures aren't counted"); await noSideways("checkpoint"); await shot("16-checkpoint");
+          const older = await open(`/view?src=${encodeURIComponent("https://log.333.eco/origin/checkpoints/3")}`); must(/The log.s signature/.test(older), "an earlier checkpoint reads too"); }
         const tsr = hrefs.find((x) => /\.tsr/.test(decodeURIComponent(x))), ots = hrefs.find((x) => /\.ots/.test(decodeURIComponent(x))), tile = hrefs.find((x) => /tile/.test(decodeURIComponent(x)));
         let page = await open(tsr); must(/signed it/.test(page) && /No later than/.test(page) && await ev(`!!document.querySelector('.ex-ok')`), "a .tsr reads as its authority and time, checked here"); await shot("12-tsr");
         page = await open(ots); must(/Block \d/.test(page) && /It covers/.test(page), "a .ots reads as what it covers and its block"); await shot("13-ots");
         page = await open(tile); must(/Entry #/.test(page) && /"claim"|"t":/.test(page) && await ev(`!!document.querySelector('.ex-first details[open]')`), "a tile reads as its entries, this record's opened"); await shot("14-tile");
-        for (const bad of ["https://evil.example/x.ots", "http://log.333.eco/origin/stamps/3.ots", "https://log.333.eco/origin/checkpoint", "https://raw.githubusercontent.com/someone/else/main/x.md.ots", "https://log.333.eco/origin/../../secret.ots"]) { page = await open(`/view?src=${encodeURIComponent(bad)}`); must(/can.t open that address/.test(page), `CONTROL: refuses ${bad}`); }
+        for (const bad of ["https://evil.example/x.ots", "http://log.333.eco/origin/stamps/3.ots", "https://log.333.eco/origin/stamps/index.json", "https://raw.githubusercontent.com/thonly/publications/main/README.md", "https://raw.githubusercontent.com/someone/else/main/x.md.ots", "https://log.333.eco/origin/../../secret.ots"]) { page = await open(`/view?src=${encodeURIComponent(bad)}`); must(/can.t open that address/.test(page), `CONTROL: refuses ${bad}`); }
         page = await open(`/view?src=${encodeURIComponent("https://raw.githubusercontent.com/thonly/publications/main/defensive-publications/zero-point-game.md.r1.ots")}`); must(/Block 959,585/.test(page) && /The document/.test(page), "a paper's older proof reads too, against its known block");
         await go(`${recordAt}/proof`); await until(`/What.s in it/.test(document.querySelector('main').innerText)`, "the record's proof"); page = await body(); must(/The checkpoint/.test(page) && /The path/.test(page) && [...page.matchAll(/Download this record/g)].length === 1, "the record's proof reads as its parts, and can still be downloaded"); must(!/\bnull\b|undefined/.test(page), "no stray null on the proof page"); await noSideways("proof"); await shot("15-proof");
         await go(recordAt); await until(`/Checked in your browser/.test(document.querySelector('main').innerText)`, "the record again");
@@ -138,6 +145,14 @@ try {
         }
         await size(390, 844, true); await shot("10-versions"); await noSideways("versions");
         await cdp("Fetch.enable", { patterns: [{ urlPattern: "*mempool.space*" }, { urlPattern: "*api.github.com*" }] });
+        {   // Its fingerprint, through the viewer, on the real text and on the text with one byte changed.
+            await go(`/corpus/${slug}`); await until(`[...document.querySelectorAll('.ex-leg')].some(l=>/Its fingerprint/.test(l.textContent)&&/hashed here/.test(l.textContent))`, "the fingerprint leg");
+            const href = await ev(`[...document.querySelectorAll('.ex-leg')].find(l=>/Its fingerprint/.test(l.textContent)).querySelector('a').pathname`); must(href === "/view", "Its fingerprint's source opens in the viewer");
+            await ev(`[...document.querySelectorAll('.ex-leg')].find(l=>/Its fingerprint/.test(l.textContent)).querySelector('a').click()`); await until(`/matches the index/.test(document.querySelector('main').innerText)`, "the document in the viewer");
+            must(await ev(`!!document.querySelector('.ex-ok') && document.querySelector('details[open] code').textContent.length>1000`), "the text shows, and its fingerprint is ticked"); await noSideways("document"); await shot("17-document");
+            await cdp("Fetch.enable", { patterns: [{ urlPattern: "*raw.githubusercontent.com*" + slug + ".md" }] }); tamperDoc = true; await ev("location.reload()"); await until(`/differs from it/.test(document.querySelector('main').innerText)`, "a changed text");
+            must(await ev(`!document.querySelector('.ex-ok')`), "CONTROL: one changed byte in the text and its fingerprint isn't ticked"); tamperDoc = false; await cdp("Fetch.enable", { patterns: [{ urlPattern: "*mempool.space*" }, { urlPattern: "*api.github.com*" }] });
+        }
         tamperBlock = true; await go(`/corpus/${slug}`); await until(`document.querySelector('.ex-ver .ex-bad')`, "a tampered block");
         must(await ev(`/doesn.t hold this proof/.test(document.querySelector('main').innerText) && !document.querySelector('.ex-ver .ex-ok')`), "CONTROL: one changed byte in the block's header and no version is ticked");
         tamperBlock = false; githubOut = true; await go(`/corpus/${slug}`); await until(`/GitHub.s limit/.test(document.querySelector('main').innerText)`, "GitHub's limit");
