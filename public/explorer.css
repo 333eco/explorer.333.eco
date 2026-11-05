@@ -15,6 +15,6 @@ a.ex-doc{display:block;text-decoration:none;color:inherit;margin-bottom:10px}a.e
 
 .ex-first{border-top:0;border-left:3px solid var(--accent);background:var(--wash);border-radius:0 12px 12px 0;padding:11px 12px;margin:0 0 4px}
 .ex-ver .ex-chips{margin:4px 0 0}.ex-ver .ex-chips:empty{display:none}
-.ex-note{font-style:italic}
+.ex-note{font-style:italic;margin:-2px 4px 14px}
 .ex-kinds{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 0}.ex-kinds .pill{font:inherit;font-size:13px;padding:6px 12px;background:none;cursor:pointer}.ex-kinds .pill.on{background:var(--wash)}
 .ex-raw{margin:8px 0 0;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}.ex-entry{margin-bottom:10px}.card details summary{cursor:pointer;font-weight:600}.card details{margin-top:12px}.ex-entry details{margin:0}
