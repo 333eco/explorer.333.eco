@@ -109,6 +109,7 @@ try {
     if (sha) { await ev(`(()=>{const i=document.querySelector('input[type=search]');i.value=${JSON.stringify(sha)};document.querySelector('.ex-search button').click();})()`); await until(`/\\d+ found/.test(document.querySelector('main').innerText)`, "the fingerprint search"); must(true, "a real fingerprint finds its record"); }
     await ev(`(()=>{const i=document.querySelector('input[type=search]');i.value='${"0".repeat(64)}';document.querySelector('.ex-search button').click();})()`); await until(`/No record matches/.test(document.querySelector('main').innerText)`, "the search control"); must(true, "CONTROL: a fingerprint nobody signed finds nothing");
 
+    must(await ev(`[...document.querySelectorAll('nav [data-nav]')].map(a=>a.dataset.nav).join()==='origin,ledger,corpus'`), "the menu reads B-Origin, Ledger, Corpus (Corpus last)");
     {   // The gratitude ledger (2026-11-06): proofs only, every check here, a receipt checked on the device, and a tampered entry refused.
         await go("/ledger"); await until(`/checked/.test(document.querySelector('main').innerText) && !/Checking the outside clocks/.test(document.querySelector('main').innerText)`, "the ledger page");
         const page = await body();
@@ -124,6 +125,7 @@ try {
         must(/another log/.test(await check(JSON.stringify({ index: 0, seal: "AA", at: "x", origin: "log.333.eco/ledger-test2", sig: "MA" }))), "ledger: a receipt from another log is refused");
         const forged = await check(JSON.stringify({ index: 1, seal: Buffer.alloc(32, 7).toString("base64url"), at: "2026-11-26T00:00Z", origin: "log.333.eco/ledger", sig: "MEUCIQCq" + "A".repeat(80) }));
         must(/does not verify/.test(forged) && /NOT at that place/.test(forged), "ledger CONTROL: a forged receipt fails its signature and its place");
+        must(await ev(`(()=>{const t=document.querySelector('.ex-receipt'),c=t.closest('.card');const p=parseFloat(getComputedStyle(c).paddingLeft)+parseFloat(getComputedStyle(c).paddingRight);return Math.abs(t.getBoundingClientRect().width-(c.clientWidth-p))<=2})()`), "ledger: the receipt box fills its card's width");
         await shot("20-ledger"); await noSideways("ledger");
         await dark(true); await shot("20-ledger-dark"); await dark(false);
         await size(1440, 900, false); await go("/ledger"); await until(`/Its signature/.test(document.querySelector('main').innerText)`, "the ledger on a desktop"); await shot("21-ledger-desktop"); await size(390, 844, true);
@@ -142,7 +144,8 @@ try {
     await go("/corpus"); await until(`/\\d+ documents/.test(document.querySelector('main').innerText)`, "the corpus");
     must(/1\d\d documents/.test(await body()), "the corpus lists every served document"); must(!/\bnull\b/.test(await body()), "no stray null at the end of the list"); must(await ev(`document.querySelectorAll('a.card.ex-doc').length>10 && getComputedStyle(document.querySelector('a.ex-doc')).textDecorationLine==='none'`), "each document is its own card, with no underline"); await shot("4-corpus"); await noSideways("corpus");
     await ev(`(()=>{const i=document.querySelector('input[type=search]');i.value='zzzz-nothing';i.dispatchEvent(new Event('input'));})()`); await until(`/^0 documents/m.test(document.querySelector('main').innerText)`, "the filter"); must(true, "the filter narrows");
-    await go("/corpus/a-promise-that-cannot-grow"); await until(`!/Checking…/.test(document.querySelector('main').innerText) && /Its fingerprint/.test(document.querySelector('main').innerText)`, "the live legs");
+    // A541: wait for the history too. A paper re-stamped today has no block on today's leg yet; its earlier versions' blocks come with the history.
+    await go("/corpus/a-promise-that-cannot-grow"); await until(`!/Checking…/.test(document.querySelector('main').innerText) && /Its fingerprint/.test(document.querySelector('main').innerText) && [...document.querySelectorAll('.ex-leg a')].some(a=>/Block \\d/.test(a.textContent))`, "the live legs and a block");
     const doc = await body(); console.log(doc.split("\n").filter(Boolean).slice(0, 26).join(" | ").slice(0, 900));
     must(/hashed here just now/.test(doc), "today's text was hashed here and matches"); must(/manifest/.test(doc), "the timestamp manifest was read"); must(/never proves that the text is true/.test(doc), "and it says its limit"); must(!/deposit/i.test(doc), "⛔ never *deposit*");
     must(await ev(`[...document.querySelectorAll('.ex-ok')].every(x=>/fingerprint|authorities|Bitcoin|Version|Earliest proof/.test(x.textContent))`), "⛔ a tick only on what this page really checked"); must(await ev(`[...document.querySelectorAll('.ex-ok')].length>0 && [...document.querySelectorAll('.ex-ok')].every(b=>b.closest('.ex-leg').querySelector('a[href]'))`), "every ticked row on a paper links its source"); must(await ev(`/^https:\\/\\/mempool\\.space\\/block\\/\\d+$/.test([...document.querySelectorAll('.ex-leg a')].find(a=>/Block /.test(a.textContent))?.href)`), "the block is a link to a Bitcoin explorer"); must(await ev(`(()=>{const a=[...document.querySelectorAll('.ex-leg a')].find(a=>/Block /.test(a.textContent));return getComputedStyle(a).fontSize===getComputedStyle(a.parentElement).fontSize&&getComputedStyle(a).fontWeight===getComputedStyle(a.parentElement).fontWeight})()`), "and it reads as ordinary text (ruled 2026-11-04: not prominent)"); await shot("5-doc"); await noSideways("doc");
@@ -214,7 +217,10 @@ try {
         await go("/corpus"); await until(`document.querySelector('.ex-doc')`, "the list");
         const index = await ev(`fetch('https://corpus.333.eco/provenance.json').then(r=>r.json()).then(j=>j.documents)`);
         const expect = (d) => d.genre === "letters" ? [d.title, ""] : d.subtitle ? [d.title, d.subtitle] : d.title.includes(": ") ? [d.title.slice(0, d.title.indexOf(": ")), d.title.slice(d.title.indexOf(": ") + 2)] : [d.title, ""];
-        must(index.filter((d) => d.subtitle && d.genre !== "letters").length > 50 && index.some((d) => !d.subtitle && d.title.includes(": ")) && index.some((d) => !d.subtitle && !d.title.includes(": ")), "CONTROL: the index holds declared subtitles, colons and titles with neither, so the next check can fail");
+        must(index.filter((d) => d.subtitle && d.genre !== "letters").length > 50 && index.some((d) => !d.subtitle && d.title.includes(": ")), "CONTROL: the index holds declared subtitles and colons, so the next check can fail");
+        // A541 (2026-11-07): the "neither" case is taken from the index each run, never named by hand; the paper once named here gained a subtitle.
+        const neither = index.find((d) => d.genre !== "letters" && !d.subtitle && !d.title.includes(": "));
+        if (!neither) console.log("NOT RUN a paper with neither a subtitle nor a colon: the index has none today");
         for (let i = 0; i < 10 && await ev(`!!document.querySelector('.ex-more')`); i++) await ev(`document.querySelector('.ex-more').click()`);
         const cards = new Map((await ev(`[...document.querySelectorAll('a.card.ex-doc')].map(a=>[a.getAttribute('href').split('/').pop(),a.querySelector('b').textContent,a.querySelector('.ex-sub')?.textContent??''])`)).map(([slug, b, s]) => [slug, [b, s]]));
         const clean = (s) => s.replace(/\\"/g, '"').replace(/\*/g, ""), wrong = index.filter((d) => { const e = expect(d), c = cards.get(d.slug); return !c || c[0] !== e[0] || c[1] !== clean(e[1]); });
@@ -222,7 +228,8 @@ try {
         const main = () => ev(`[document.querySelector('h1').textContent,document.querySelector('.ex-sub')?.textContent??'']`);
         must(/^What a Vow Must Cost: Vow-Validity/.test((await ev(`document.querySelector('a[href="/corpus/what-a-vow-must-cost"] b').textContent`))), "a declared subtitle leaves the colon in the title");
         must(await ev(`document.querySelector('a[href="/corpus/the-capacity-to-give"] b').textContent==='The Capacity to Give'`), "with none declared, the colon starts the subtitle");
-        must(await ev(`!document.querySelector('a[href="/corpus/the-pond-at-night"] .ex-sub') && !document.querySelector('a[href="/corpus/first-letter-to-miss-aquarius"] .ex-sub')`), "a paper with no subtitle and a letter show none");
+        if (neither) must(await ev(`!document.querySelector('a[href="/corpus/${neither.slug}"] .ex-sub')`), `a paper with no subtitle shows none (${neither.slug})`);
+        must(await ev(`!document.querySelector('a[href="/corpus/first-letter-to-miss-aquarius"] .ex-sub')`), "a letter shows no subtitle");
         must(await ev(`document.querySelector('a[href="/corpus/future-kindness-operating-noun"] .ex-sub em')?.textContent==='"Thank Your Future Kindness"' && ![...document.querySelectorAll('.ex-sub')].some(p=>/[\\\\*]/.test(p.textContent))`), "front matter's italics and escapes don't show");
         const clamp = `(()=>{const p=document.querySelector('a[href="/corpus/proof-of-coordinate"] .ex-sub');return p.scrollHeight>p.clientHeight&&p.clientHeight<100})()`;
         must(await ev(clamp), "the list holds a long subtitle to three lines"); await noSideways("the list with subtitles"); await shot("12-subtitles-phone");

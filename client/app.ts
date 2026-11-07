@@ -300,7 +300,7 @@ async function liveLegs(d: Doc, into: HTMLElement) {
 }
 /* The paper's history. Everything is read from where it lives, in this browser; what can't be read leaves a gap, never a failure. */
 interface Version { digest: string; proof: string; anchor: Anchor; commit?: string; day?: string; manifest?: string }
-interface History { versions: Version[]; proofsRead: boolean; partial: boolean; repo?: string; branch?: string; path?: string; firstCommit?: string; gitRead: boolean; gitFailed: boolean; zenodo?: { at: string; url: string }; archive?: { at: string; url: string }; tdcommons?: { at: string; url: string }; publicRead: boolean }
+interface History { versions: Version[]; proofsRead: boolean; partial: boolean; repo?: string; branch?: string; path?: string; firstCommit?: string; gitRead: boolean; gitFailed: boolean; zenodo?: { at: string; url: string }; archive?: { at: string; url: string }; archiveUnsure?: boolean; tdcommons?: { at: string; url: string }; publicRead: boolean }
 /** An OpenTimestamps file names the digest it speaks of: 31 bytes of magic, a version byte, the SHA-256 tag, then 32 bytes. */
 const otsDigest = (b: Uint8Array) => (b.length >= 65 && b[32] === 0x08 ? hex(b.subarray(33, 65)) : null);
 async function readProofs(d: Doc, x: History) {
@@ -324,12 +324,20 @@ async function readPublic(d: Doc, x: History) {
     })();
     const addresses = d.read_at ? [d.read_at.replace(/^https?:\/\//, "")] : [];
     if (addresses[0]?.startsWith("thonly.org/")) addresses.push(`thonly.org/research/${d.slug}`); // the address papers had before /publications
+    // A541: the lookup sometimes fails or answers empty on one load, so the date changed between visits. Each address is asked up to three
+    // times; three plain "none" answers mean none, and any failed request is said on the page instead of showing a date that may be late.
     const archive = Promise.all(addresses.map(async (a) => {
-        try {
-            const c = (await (await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(a)}&timestamp=19960101`)).json()).archived_snapshots?.closest;
-            const t = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(c?.timestamp ?? "");
-            if (c?.available && t) { const at = `${t[1]}-${t[2]}-${t[3]}T${t[4]}:${t[5]}:${t[6]}Z`; if (!x.archive || at < x.archive.at) x.archive = { at, url: String(c.url).replace(/^http:/, "https:") }; }
-        } catch { /* a gap */ }
+        let failed = false;
+        for (let k = 0; k < 3; k++) {
+            try {
+                const r = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(a)}&timestamp=19960101`);
+                if (!r.ok) throw new Error(String(r.status));
+                const c = (await r.json()).archived_snapshots?.closest, t = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(c?.timestamp ?? "");
+                if (c?.available && t) { const at = `${t[1]}-${t[2]}-${t[3]}T${t[4]}:${t[5]}:${t[6]}Z`; if (!x.archive || at < x.archive.at) x.archive = { at, url: String(c.url).replace(/^http:/, "https:") }; return; }
+            } catch { failed = true; }
+            await new Promise((r) => setTimeout(r, 400 * (k + 1)));
+        }
+        if (failed) x.archiveUnsure = true;
     }));
     const tdcommons = (async () => {
         if (d.genre !== "defensive-publications" || !x.repo) return;
@@ -404,6 +412,7 @@ function howEarly(x: History) {
     const history = x.repo && x.branch && x.path ? `https://github.com/${x.repo}/commits/${x.branch}/${x.path}` : null;
     const pub = h("div", { class: "ex-leg" }, h("b", {}, dated.length ? say(`Public by ${date(dated[0].at)}`, `ជាសាធារណៈនៅ ${date(dated[0].at)}`) : say("Public by", "ជាសាធារណៈនៅ")),
         ...(dated.length ? dated.map((v) => v.node) : [h("p", {}, x.publicRead ? say("No public record gave a date just now.", "គ្មានកំណត់ត្រាសាធារណៈណាផ្តល់កាលបរិច្ឆេទឥឡូវនេះទេ។") : reading)]),
+        x.archiveUnsure ? h("p", { class: "fine" }, say("The Internet Archive didn't answer every lookup just now, so its first capture may be missing here, or be earlier than shown.", "Internet Archive មិនបានឆ្លើយរាល់ការស្វែងរកឥឡូវនេះទេ ដូច្នេះការចាប់យកដំបូងរបស់វាអាចបាត់នៅទីនេះ ឬមុនជាងអ្វីដែលបង្ហាញ។")) : null,
         x.firstCommit ? h("p", {}, say(`Its repository's history starts on ${date(x.firstCommit)}. Git dates are written by the author, so this is stated, not proved. `, `ប្រវត្តិឃ្លាំងរបស់វាចាប់ផ្តើមនៅ ${date(x.firstCommit)}។ កាលបរិច្ឆេទ Git ត្រូវបានសរសេរដោយអ្នកនិពន្ធ ដូច្នេះនេះគឺត្រូវបាននិយាយ មិនមែនបានបង្ហាញទេ។ `), history ? link(history, say("The history", "ប្រវត្តិ")) : null) : null);
     return card(h("h2", {}, say("How early", "តាំងពីពេលណា")), existed, pub,
         h("p", { class: "fine ex-gap" }, say("The earliest proof covers only the earliest stamped version, and a capture shows a page as it stood that day. Anything added later dates from the first version that contains it. A proof shows a text existed, not that anyone could read it, so the two dates are kept apart.", "ភស្តុតាងដំបូងបំផុតគ្របដណ្តប់តែកំណែដំបូងបំផុតដែលបានបោះត្រាប៉ុណ្ណោះ ហើយការចាប់យកបង្ហាញទំព័រដូចដែលវាមាននៅថ្ងៃនោះ។ អ្វីដែលបានបន្ថែមក្រោយមក មានកាលបរិច្ឆេទពីកំណែដំបូងដែលមានវា។ ភស្តុតាងបង្ហាញថាអត្ថបទមាន មិនមែនថាអ្នកណាម្នាក់អាចអានវាបានទេ ដូច្នេះកាលបរិច្ឆេទទាំងពីរត្រូវបានបំបែកចេញពីគ្នា។")));
