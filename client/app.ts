@@ -1,9 +1,10 @@
 /**
  * explorer.333.eco: read-only. ⭐ Everything shown is read from the public log or a public repository and checked here, in the reader's browser, so trusting this host isn't required. A check that can't run says so; it is never shown as passed.
- * ⛔ No ranking, no counters that climb, no rates. ⛔ No word about outside witnesses until they exist (A515). The gratitude ledger's page waits for the ledger. DRAFT Khmer (ours).
+ * ⛔ No ranking, no counters that climb, no rates. ⛔ No word about outside witnesses until they exist (A515). The gratitude ledger shows proofs only (ledger SPEC §4.4). DRAFT Khmer (ours).
  */
 // @ts-expect-error the published verifier ships no types
-import { auditLog, checkCheckpoint, checkOts, checkpointBody, checkTimestamp, findRecords, packRecord, readEntries, verifyPack } from "@333eco/origin-verify";
+import { auditLog, checkCheckpoint, checkOts, checkpointBody, checkTimestamp, findRecords, hashLeaf, packRecord, readEntries, treeRoot, verifyPack } from "@333eco/origin-verify";
+import ledgerTrust from "./ledger-trust";
 // @ts-expect-error the same
 import { canvasDecoder, hashFile } from "@333eco/origin-verify/media";
 // @ts-expect-error the same
@@ -540,8 +541,115 @@ async function proofPage(index: number) {
         card(h("h2", {}, say("Check it yourself", "ពិនិត្យដោយខ្លួនឯង")), code(`npx @333eco/origin-verify check b-origin-record-${index}.json`), h("button", { type: "button", class: "btn ghost", onclick: download }, say("Download this record's proof", "ទាញយកភស្តុតាងកំណត់ត្រានេះ"))), back);
 }
 
+/* ─────────────── The gratitude ledger ───────────────
+   ⛔ Proofs only (ledger SPEC §4.4): who thanked whom, what and how much are never here, and nothing on this page can reach a row.
+   ⛔ No rate and no count of thanks: the size is padded every day, so it says only that the ledger ran. DRAFT Khmer (ours). */
+const LEDGER = "https://log.333.eco/ledger/";
+const ledgerGet = async (p: string) => { const r = await fetch(LEDGER + p); if (r.status === 404) return null; if (!r.ok) throw new Error(String(r.status)); return new Uint8Array(await r.arrayBuffer()); };
+const enc = (s: string) => new TextEncoder().encode(s);
+const join = (...parts: Uint8Array[]) => { const o = new Uint8Array(parts.reduce((a, b) => a + b.length, 0)); let at = 0; for (const p of parts) { o.set(p, at); at += p.length; } return o; };
+const same = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
+const unb64 = (s: string) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(s.length / 4) * 4, "=")), (c) => c.charCodeAt(0));
+const hashTile = (t: number, width?: number) => { let s = "", v = t, first = true; do { const part = String(v % 1000).padStart(3, "0"); s = (first ? part : `x${part}/`) + s; first = false; v = Math.floor(v / 1000); } while (v > 0); return `tile/0/${s}${width ? `.p/${width}` : ""}`; };
+/** DER ECDSA → the raw r‖s WebCrypto verifies. */
+function derToRaw(der: Uint8Array) {
+    let i = 2; const part = () => { if (der[i++] !== 0x02) throw new Error("not ECDSA"); const len = der[i++]; let v = der.subarray(i, i + len); i += len; while (v.length > 32 && v[0] === 0) v = v.subarray(1); const o = new Uint8Array(32); o.set(v, 32 - v.length); return o; };
+    if (der[0] !== 0x30) throw new Error("not ECDSA"); return join(part(), part());
+}
+interface PublicEntry { index: number; t: string; n?: number; start?: string; end?: string; rulesHash?: string; day?: string; hash?: string; at?: string }
+interface LedgerRead { ok: boolean; why?: string; size: number; body: string; entries: Uint8Array[]; pub: PublicEntry[]; placed: boolean; stamps: { tsa?: number[]; ots?: number[] } }
+let ledgerCache: LedgerRead | null = null;
+async function readLedger(): Promise<LedgerRead> {
+    if (ledgerCache) return ledgerCache;
+    const fail = (why: string): LedgerRead => ({ ok: false, why, size: 0, body: "", entries: [], pub: [], placed: false, stamps: {} });
+    try {
+        const note = await ledgerGet("checkpoint");
+        if (!note) return fail(say("No checkpoint has been published yet.", "មិនទាន់មាន checkpoint បោះពុម្ពនៅឡើយទេ។"));
+        const cp = await checkCheckpoint(text(note), ledgerTrust);
+        if (!cp.ok) return fail(cp.why);
+        const entries: Uint8Array[] = await readEntries(ledgerGet, cp.size), leaves: Uint8Array[] = entries.map(hashLeaf);
+        if (!same(treeRoot(leaves), cp.root)) return fail(say("The entries do not produce the checkpoint's root.", "ធាតុទាំងនេះមិនបង្កើតឫសរបស់ checkpoint ទេ។"));
+        for (let t = 0; t * 256 < cp.size; t++) {
+            const width = t * 256 + 256 <= cp.size ? undefined : cp.size % 256, tile = await ledgerGet(hashTile(t, width));
+            if (!tile || !same(tile, join(...leaves.slice(t * 256, t * 256 + (width ?? 256))))) return fail(say(`Hash tile ${t} does not match the entries.`, `ក្រឡាហាស ${t} មិនត្រូវនឹងធាតុទេ។`));
+        }
+        const pub: PublicEntry[] = [];
+        for (const [index, e] of entries.entries()) {
+            if (e.length === 32) continue;
+            const nul = e.indexOf(0), tag = text(e.subarray(0, nul)), m = /^ledger\/(season|jubilee|reads)\/v1$/.exec(tag);
+            if (nul < 0 || !m) return fail(say(`Entry ${index} is neither a sealed fingerprint nor a public entry.`, `ធាតុ ${index} មិនមែនជាស្នាមម្រាមដៃបិទត្រា ឬធាតុសាធារណៈទេ។`));
+            pub.push({ index, ...JSON.parse(text(e.subarray(nul + 1))) });
+        }
+        const at = new Set(pub.map((x) => x.index)), placed = pub.every((x) => x.index === 0 || at.has(x.index + 1) || (x.index + 1) % 256 === 0);
+        const idx = await ledgerGet("stamps/index.json");
+        ledgerCache = { ok: true, size: cp.size, body: cp.body, entries, pub, placed, stamps: idx ? JSON.parse(text(idx)) : {} };
+        return ledgerCache;
+    } catch (e) { return fail((e as Error).message); }
+}
+async function checkReceipt(raw: string, l: LedgerRead): Promise<Node> {
+    let r: { index: number; seal: string; at: string; origin: string; sig: string };
+    try { r = JSON.parse(raw); if (!Number.isSafeInteger(r.index) || typeof r.seal !== "string" || typeof r.sig !== "string" || typeof r.at !== "string") throw 0; }
+    catch { return leg(false, say("That isn't a receipt", "នោះមិនមែនជាបង្កាន់ដៃទេ"), say("Paste the receipt exactly as your export gives it.", "សូមបិទភ្ជាប់បង្កាន់ដៃឲ្យដូចដែលការនាំចេញរបស់អ្នកផ្តល់ឲ្យ។")); }
+    if (r.origin !== ledgerTrust.origin) return leg(false, say("This receipt is for another log", "បង្កាន់ដៃនេះសម្រាប់កំណត់ហេតុផ្សេង"), String(r.origin ?? ""));
+    const seal = unb64(r.seal), idx = new Uint8Array(8); new DataView(idx.buffer).setBigUint64(0, BigInt(r.index));
+    let signed = false;
+    try {
+        const key = await crypto.subtle.importKey("spki", unb64(ledgerTrust.receiptKey), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+        signed = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, derToRaw(unb64(r.sig)), join(enc("ledger/receipt/v1\0"), enc(r.origin), new Uint8Array([0]), idx, seal, enc(r.at)));
+    } catch { signed = false; }
+    const inTree = r.index < l.size ? same(l.entries[r.index], seal) : null;
+    return h("div", {}, leg(signed, signed ? say("The ledger signed this receipt", "បញ្ជីបានចុះហត្ថលេខាលើបង្កាន់ដៃនេះ") : say("This signature does not verify", "ហត្ថលេខានេះមិនត្រឹមត្រូវទេ"), say("Checked here against the ledger's published receipt key.", "បានពិនិត្យនៅទីនេះធៀបនឹងសោបង្កាន់ដៃដែលបានបោះពុម្ពរបស់បញ្ជី។")),
+        inTree === null ? leg(null, say("Not in a published checkpoint yet", "មិនទាន់នៅក្នុង checkpoint ដែលបានបោះពុម្ពទេ"), say("The ledger closes once a day. The next close publishes it.", "បញ្ជីបិទម្តងក្នុងមួយថ្ងៃ។ ការបិទបន្ទាប់នឹងបោះពុម្ពវា។"))
+            : leg(inTree, inTree ? say("It is in the ledger", "វានៅក្នុងបញ្ជី") : say("It is NOT at that place in the ledger", "វាមិននៅកន្លែងនោះក្នុងបញ្ជីទេ"), say(`Entry ${n(r.index)} was compared with this fingerprint, and the root above was rebuilt from every entry.`, `ធាតុ ${n(r.index)} ត្រូវបានប្រៀបធៀបនឹងស្នាមម្រាមដៃនេះ ហើយឫសខាងលើត្រូវបានសាងសង់ឡើងវិញពីធាតុទាំងអស់។`)));
+}
+async function ledgerStamps(l: LedgerRead, into: HTMLElement) {
+    const s = Math.max(0, ...(l.stamps.tsa ?? []), ...(l.stamps.ots ?? []));
+    if (!s) return into.replaceChildren(leg(null, say("Not stamped yet", "មិនទាន់បោះត្រា"), say("The ledger is stamped once a day.", "បញ្ជីត្រូវបានបោះត្រាម្តងក្នុងមួយថ្ងៃ។")));
+    const note = await ledgerGet(`checkpoints/${s}`), body = note ? enc(checkpointBody(text(note))) : null, rows: Node[] = [];
+    if (!body) return into.replaceChildren(leg(false, say("The stamped checkpoint can't be read", "មិនអាចអាន checkpoint ដែលបានបោះត្រាបានទេ"), ""));
+    for (const [name, roots] of Object.entries((trust as any).tsaRoots ?? {})) {
+        const tsr = await ledgerGet(`stamps/${s}.${name}.tsr`);
+        if (!tsr) continue;
+        const got = await checkTimestamp(tsr, body, (roots as string[]).map(unb64)).catch(() => ({ ok: false }));
+        rows.push(got.ok ? leg(true, say(`${name} signed it`, `${name} បានចុះហត្ថលេខា`), say(`No later than ${when(got.time)}`, `មិនយឺតជាង ${when(got.time)}`)) : leg(false, say(`${name}'s token does not verify`, `សញ្ញារបស់ ${name} មិនត្រឹមត្រូវទេ`), ""));
+    }
+    const ots = await ledgerGet(`stamps/${s}.ots`);
+    if (ots) {
+        const a = await anchorOf(ots, new Uint8Array(await crypto.subtle.digest("SHA-256", body)));
+        rows.push(a.height !== undefined ? leg(a.checked, "Bitcoin", blockLink(a.height), a.time ? say(` · no later than ${when(a.time)}`, ` · មិនយឺតជាង ${when(a.time)}`) : "")
+            : leg(null, "Bitcoin", say("Waiting for a block. This takes a few hours.", "កំពុងរង់ចាំប្លុក។ វាចំណាយពេលពីរបីម៉ោង។")));
+    }
+    into.replaceChildren(h("p", {}, say(`The ledger's state at ${count(s, "entry", "entries")} was timestamped outside our control:`, `ស្ថានភាពនៃបញ្ជីនៅ ${n(s)} ធាតុ ត្រូវបានបោះត្រាពេលវេលានៅក្រៅការគ្រប់គ្រងរបស់យើង៖`)), ...rows);
+}
+async function ledgerPage() {
+    const title = head(say("Gratitude ledger", "បញ្ជីការដឹងគុណ"), say("Thanks are private. This page shows only the proofs that the ledger is whole and has never been rewritten, and every check runs in your browser.", "ការអរគុណគឺជាឯកជន។ ទំព័រនេះបង្ហាញតែភស្តុតាងថាបញ្ជីនៅពេញលេញ ហើយមិនដែលត្រូវបានសរសេរឡើងវិញ ហើយការពិនិត្យទាំងអស់ដំណើរការក្នុងកម្មវិធីរុករករបស់អ្នក។"));
+    view.replaceChildren(title, card(h("p", { role: "status" }, say("Reading and checking the ledger…", "កំពុងអាន និងពិនិត្យបញ្ជី…"))));
+    const l = await readLedger();
+    if (route().name !== "ledger") return;
+    if (!l.ok) return view.replaceChildren(title, card(leg(false, say("The ledger didn't pass its check", "បញ្ជីមិនបានឆ្លងការពិនិត្យទេ"), say("Or it can't be read right now, so nothing from it is shown. ", "ឬមិនអាចអានបានឥឡូវនេះ ដូច្នេះគ្មានអ្វីពីវាត្រូវបានបង្ហាញទេ។ "), l.why ?? "")));
+    const ended = new Map(l.pub.filter((e) => e.t === "jubilee").map((e) => [e.n!, e.at!]));
+    const stampsBox = h("div", {}, h("p", { role: "status" }, say("Checking the outside clocks…", "កំពុងពិនិត្យនាឡិកាខាងក្រៅ…")));
+    const ta = h("textarea", { rows: "4", class: "ex-receipt", "aria-label": say("A receipt", "បង្កាន់ដៃ"), placeholder: '{"index": …, "seal": "…", "at": "…", "origin": "log.333.eco/ledger", "sig": "…"}' }) as HTMLTextAreaElement, out = h("div", { role: "status" });
+    const lastReads = l.pub.filter((e) => e.t === "reads").slice(-1)[0];
+    view.replaceChildren(title,
+        card(leg(true, say("Its signature, its tree and every entry, checked", "ហត្ថលេខា ដើមឈើ និងធាតុទាំងអស់របស់វា បានពិនិត្យ"), say(`Signed with the ledger's published key, and its root rebuilt here from all ${count(l.size, "entry", "entries")}. Each entry is a sealed 32-byte fingerprint, or one of the few public entries below. The size is padded every day, so it says only that the ledger ran.`, `ចុះហត្ថលេខាដោយសោដែលបានបោះពុម្ពរបស់បញ្ជី ហើយឫសរបស់វាត្រូវបានសាងសង់ឡើងវិញនៅទីនេះពីធាតុទាំង ${n(l.size)}។ ធាតុនីមួយៗជាស្នាមម្រាមដៃ 32 បៃដែលបានបិទត្រា ឬជាធាតុសាធារណៈមួយក្នុងចំណោមធាតុខាងក្រោម។ ទំហំត្រូវបានបំពេញរៀងរាល់ថ្ងៃ ដូច្នេះវាប្រាប់តែថាបញ្ជីបានដំណើរការ។`)),
+            leg(l.placed, l.placed ? say("Public entries close their day", "ធាតុសាធារណៈបិទថ្ងៃរបស់វា") : say("A public entry is out of place", "ធាតុសាធារណៈមួយនៅខុសកន្លែង"), say("Each sits at the end of its day's entries, so where it falls says nothing about how many thanks came before it.", "ធាតុនីមួយៗនៅចុងធាតុនៃថ្ងៃរបស់វា ដូច្នេះទីតាំងរបស់វាមិនប្រាប់ពីចំនួនការអរគុណមុនវាទេ។"))),
+        card(h("h2", {}, say("Seasons", "រដូវ")), ...l.pub.filter((e) => e.t === "season").map((e) => h("div", { class: "ex-leg" },
+            h("b", {}, say(`Season ${e.n}`, `រដូវ ${e.n}`)), h("p", {}, say(`Opens ${when(e.start!)} · ends ${when(e.end!)}`, `បើក ${when(e.start!)} · បញ្ចប់ ${when(e.end!)}`)),
+            h("p", {}, say("Its rule was committed here before anyone thanked under it. The rule's fingerprint:", "ច្បាប់របស់វាត្រូវបានប្តេជ្ញានៅទីនេះ មុនពេលនរណាម្នាក់អរគុណក្រោមវា។ ស្នាមម្រាមដៃរបស់ច្បាប់៖")), h("p", { class: "ex-mono" }, e.rulesHash!),
+            ended.has(e.n!) ? h("p", {}, say(`It ended and reset on ${when(ended.get(e.n!)!)}. Nothing was deleted: the reset is an entry here.`, `វាបានបញ្ចប់ ហើយកំណត់ឡើងវិញនៅ ${when(ended.get(e.n!)!)}។ គ្មានអ្វីត្រូវបានលុបទេ៖ ការកំណត់ឡើងវិញគឺជាធាតុមួយនៅទីនេះ។`)) : null))),
+        card(h("h2", {}, say("Outside clocks", "នាឡិកាខាងក្រៅ")), stampsBox),
+        lastReads ? card(h("h2", {}, say("Who opened the rows", "អ្នកណាបានបើកជួរ")), h("p", {}, say(`The ledger keeps a record of every time it opens a private row, and each day that record is locked away and its fingerprint is put here, so it can't be changed later. The latest is for ${date(lastReads.day!)}.`, `បញ្ជីរក្សាកំណត់ត្រារាល់ពេលដែលវាបើកជួរឯកជន ហើយរៀងរាល់ថ្ងៃកំណត់ត្រានោះត្រូវបានចាក់សោ ហើយស្នាមម្រាមដៃរបស់វាត្រូវបានដាក់នៅទីនេះ ដូច្នេះវាមិនអាចផ្លាស់ប្តូរនៅពេលក្រោយបានទេ។ ចុងក្រោយគឺសម្រាប់ ${date(lastReads.day!)}។`))) : null,
+        card(h("h2", {}, say("Check a receipt", "ពិនិត្យបង្កាន់ដៃ")), h("p", {}, say("Paste a receipt from your own export. It is checked on this device and never sent anywhere.", "បិទភ្ជាប់បង្កាន់ដៃពីការនាំចេញរបស់អ្នក។ វាត្រូវបានពិនិត្យនៅលើឧបករណ៍នេះ ហើយមិនដែលផ្ញើទៅកន្លែងណាទេ។")),
+            h("form", { onsubmit: async (e: Event) => { e.preventDefault(); out.replaceChildren(await checkReceipt(ta.value, l)); } }, ta, h("button", { class: "btn", type: "submit" }, say("Check", "ពិនិត្យ"))), out),
+        card(h("h2", {}, say("What is never shown here", "អ្វីដែលមិនដែលបង្ហាញនៅទីនេះ")), h("p", {}, say("Who thanked whom, what was given, or how much, or how often anyone thanks. Each entry is sealed before it is counted, and only its sealed fingerprint enters the tree.", "អ្នកណាអរគុណអ្នកណា អ្វីដែលបានផ្ដល់ ឬចំនួនប៉ុន្មាន ឬញឹកញាប់ប៉ុណ្ណា។ ធាតុនីមួយៗត្រូវបានបិទត្រាមុនពេលរាប់ មានតែស្នាមម្រាមដៃដែលបានបិទត្រាប៉ុណ្ណោះចូលក្នុងដើមឈើ។"))),
+        card(h("h2", {}, say("Check it yourself, without us", "ពិនិត្យដោយខ្លួនឯង ដោយមិនត្រូវការយើង")), h("p", {}, say("Everything here is public at ", "អ្វីៗទាំងអស់នៅទីនេះជាសាធារណៈនៅ "), link(LEDGER + "checkpoint", "log.333.eco/ledger"), say(". The ledger's key:", "។ សោរបស់បញ្ជី៖")), h("p", { class: "ex-mono" }, ledgerTrust.logVkey)),
+        tickNote());
+    await ledgerStamps(l, stampsBox);
+}
+
 /* ─────────────── Pages ─────────────── */
-function route(): { name: "origin" } | { name: "record"; index: number } | { name: "proof"; index: number } | { name: "view"; src: string; entry: number | null } | { name: "corpus" } | { name: "doc"; slug: string } {
+function route(): { name: "origin" } | { name: "ledger" } | { name: "record"; index: number } | { name: "proof"; index: number } | { name: "view"; src: string; entry: number | null } | { name: "corpus" } | { name: "doc"; slug: string } {
     const p = location.pathname.replace(/\/+$/, "");
     const rec = /^\/origin\/(\d{1,12})$/.exec(p), doc = /^\/corpus\/([a-z0-9-]+)$/.exec(p);
     const prf = /^\/origin\/(\d{1,12})\/proof$/.exec(p);
@@ -549,13 +657,14 @@ function route(): { name: "origin" } | { name: "record"; index: number } | { nam
     if (p === "/view") { const q = new URLSearchParams(location.search), e = q.get("entry"); return { name: "view", src: q.get("src") ?? "", entry: e && /^\d{1,12}$/.test(e) ? Number(e) : null }; }
     if (rec) return { name: "record", index: Number(rec[1]) };
     if (doc) return { name: "doc", slug: doc[1] };
+    if (p === "/ledger") return { name: "ledger" };
     return p === "/corpus" ? { name: "corpus" } : { name: "origin" };
 }
 function paint() {
-    const r = route(), area = r.name === "corpus" || r.name === "doc" || (r.name === "view" && !r.src.startsWith(LOG)) ? "corpus" : "origin";
+    const r = route(), area = r.name === "ledger" ? "ledger" : r.name === "corpus" || r.name === "doc" || (r.name === "view" && !r.src.startsWith(LOG)) ? "corpus" : "origin";
     document.querySelectorAll<HTMLElement>("[data-nav]").forEach((a) => { if (a.dataset.nav === area) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
-    document.title = `${r.name === "view" ? say("A source file", "ឯកសារប្រភព") : r.name === "proof" ? say(`Proof of record #${r.index}`, `ភស្តុតាងនៃកំណត់ត្រា #${r.index}`) : r.name === "record" ? say(`Record #${r.index}`, `កំណត់ត្រា #${r.index}`) : area === "corpus" ? say("Corpus", "សារពើភ័ណ្ឌឯកសារ") : say("Records", "កំណត់ត្រា")} · B-Explorer`;
-    const run = r.name === "view" ? viewPage(r.src, r.entry) : r.name === "proof" ? proofPage(r.index) : r.name === "record" ? recordPage(r.index) : r.name === "doc" ? docPage(r.slug) : r.name === "corpus" ? corpusPage() : originPage();
+    document.title = r.name === "ledger" ? `${say("Gratitude ledger", "បញ្ជីការដឹងគុណ")} · explorer.333.eco` : `${r.name === "view" ? say("A source file", "ឯកសារប្រភព") : r.name === "proof" ? say(`Proof of record #${r.index}`, `ភស្តុតាងនៃកំណត់ត្រា #${r.index}`) : r.name === "record" ? say(`Record #${r.index}`, `កំណត់ត្រា #${r.index}`) : area === "corpus" ? say("Corpus", "សារពើភ័ណ្ឌឯកសារ") : say("Records", "កំណត់ត្រា")} · B-Explorer`;
+    const run = r.name === "ledger" ? ledgerPage() : r.name === "view" ? viewPage(r.src, r.entry) : r.name === "proof" ? proofPage(r.index) : r.name === "record" ? recordPage(r.index) : r.name === "doc" ? docPage(r.slug) : r.name === "corpus" ? corpusPage() : originPage();
     run.catch((e) => view.replaceChildren(card(leg(false, say("That didn't work", "វាមិនដំណើរការទេ"), String(e.message ?? e)))));
 }
 function nav(path: string) { history.pushState(null, "", path); window.scrollTo(0, 0); found = null; searchNote = ""; paint(); }

@@ -27,7 +27,7 @@ try {
     for (let i = 0; i < 50 && !target; i++) { await sleep(200); try { target = (await (await fetch("http://127.0.0.1:9336/json")).json()).find((t) => t.type === "page"); } catch {} }
     const ws = new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((r) => { ws.onopen = r; });
-    let id = 0, tamper = false, tamperBlock = false, githubOut = false, tamperDoc = false; const wait = new Map(), errors = [];
+    let id = 0, tamperLedger = false, tamper = false, tamperBlock = false, githubOut = false, tamperDoc = false; const wait = new Map(), errors = [];
     const cdp = (method, params = {}) => new Promise((r) => { const n = ++id; wait.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
     ws.onmessage = async (m) => {
         const d = JSON.parse(m.data);
@@ -44,6 +44,9 @@ try {
                 cdp("Fetch.fulfillRequest", { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: "Access-Control-Allow-Origin", value: "*" }], body: b.toString("base64") });
             } else if (githubOut && /api\.github\.com/.test(url)) {
                 cdp("Fetch.fulfillRequest", { requestId: d.params.requestId, responseCode: 403, responseHeaders: [{ name: "Access-Control-Allow-Origin", value: "*" }], body: Buffer.from("{}").toString("base64") });
+            } else if (tamperLedger && /log\.333\.eco\/ledger\/tile\/entries/.test(url)) { // one changed byte in a real ledger entry
+                const r = await fetch(url), b = Buffer.from(await r.arrayBuffer()); b[b.length - 9] ^= 1;
+                cdp("Fetch.fulfillRequest", { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: "Access-Control-Allow-Origin", value: "*" }], body: b.toString("base64") });
             } else if (tamper && /log\.333\.eco\/origin\/tile\/entries/.test(url)) { // one changed byte in a real entry
                 const r = await fetch(url), b = Buffer.from(await r.arrayBuffer()); b[b.length - 20] ^= 1;
                 cdp("Fetch.fulfillRequest", { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: "Access-Control-Allow-Origin", value: "*" }], body: b.toString("base64") });
@@ -105,6 +108,30 @@ try {
     const sha = await ev(`fetch('https://log.333.eco/origin/tile/entries/000.p/1').then(r=>r.text()).then(t=>JSON.parse(t.slice(t.indexOf('{'))).claim.sha256).catch(()=>null)`);
     if (sha) { await ev(`(()=>{const i=document.querySelector('input[type=search]');i.value=${JSON.stringify(sha)};document.querySelector('.ex-search button').click();})()`); await until(`/\\d+ found/.test(document.querySelector('main').innerText)`, "the fingerprint search"); must(true, "a real fingerprint finds its record"); }
     await ev(`(()=>{const i=document.querySelector('input[type=search]');i.value='${"0".repeat(64)}';document.querySelector('.ex-search button').click();})()`); await until(`/No record matches/.test(document.querySelector('main').innerText)`, "the search control"); must(true, "CONTROL: a fingerprint nobody signed finds nothing");
+
+    {   // The gratitude ledger (2026-11-06): proofs only, every check here, a receipt checked on the device, and a tampered entry refused.
+        await go("/ledger"); await until(`/checked/.test(document.querySelector('main').innerText) && !/Checking the outside clocks/.test(document.querySelector('main').innerText)`, "the ledger page");
+        const page = await body();
+        must(/Its signature, its tree and every entry, checked/.test(page), "ledger: its signature, tree and every entry are checked here");
+        must(/Season 1/.test(page) && /YREfhlIakdpKEn1DeLhFO_WjW-RSPJfh00rS93-umN8/.test(page), "ledger: season 1 and its rule's fingerprint");
+        must(/Public entries close their day/.test(page), "ledger: public entries close their day");
+        must((page.match(/signed it/g) ?? []).length === 3, `ledger: the three timestamp authorities, each checked here (${(page.match(/signed it/g) ?? []).length})`);
+        must(/Bitcoin/.test(page), "ledger: where it stands with Bitcoin");
+        must(/What is never shown here/.test(page) && !/\bnull\b|undefined/.test(page), "ledger: what is never shown, and no stray null");
+        must(await ev(`document.querySelector('a[data-nav=ledger]').getAttribute('aria-current')==='page'`), "ledger: its tab is current");
+        const check = async (v) => { await ev(`(()=>{const t=document.querySelector('.ex-receipt');t.value=${JSON.stringify(v)};t.form.requestSubmit();})()`); await sleep(500); return ev("document.querySelector('.ex-receipt').form.parentElement.innerText"); };
+        must(/isn.t a receipt/.test(await check("not json")), "ledger: something that isn't a receipt is refused");
+        must(/another log/.test(await check(JSON.stringify({ index: 0, seal: "AA", at: "x", origin: "log.333.eco/ledger-test2", sig: "MA" }))), "ledger: a receipt from another log is refused");
+        const forged = await check(JSON.stringify({ index: 1, seal: Buffer.alloc(32, 7).toString("base64url"), at: "2026-11-26T00:00Z", origin: "log.333.eco/ledger", sig: "MEUCIQCq" + "A".repeat(80) }));
+        must(/does not verify/.test(forged) && /NOT at that place/.test(forged), "ledger CONTROL: a forged receipt fails its signature and its place");
+        await shot("20-ledger"); await noSideways("ledger");
+        await dark(true); await shot("20-ledger-dark"); await dark(false);
+        await size(1440, 900, false); await go("/ledger"); await until(`/Its signature/.test(document.querySelector('main').innerText)`, "the ledger on a desktop"); await shot("21-ledger-desktop"); await size(390, 844, true);
+        await cdp("Fetch.enable", { patterns: [{ urlPattern: "*log.333.eco/ledger*" }] }); tamperLedger = true;
+        await go("/ledger"); await until(`/didn.t pass its check|signature, its tree/.test(document.querySelector('main').innerText)`, "the tampered ledger");
+        must(/didn.t pass its check/.test(await body()) && !/Season 1/.test(await body()), "ledger CONTROL: one changed byte in an entry fails the page, and nothing from it is shown");
+        tamperLedger = false; await cdp("Fetch.disable");
+    }
 
     await cdp("Fetch.enable", { patterns: [{ urlPattern: "*log.333.eco*" }] }); tamper = true;
     await cdp("Network.setCacheDisabled", { cacheDisabled: true }); await go("/origin");
