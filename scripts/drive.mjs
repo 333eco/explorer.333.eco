@@ -118,6 +118,8 @@ try {
         must(/Public entries close their day/.test(page), "ledger: public entries close their day");
         must((page.match(/signed it/g) ?? []).length === 3, `ledger: the three timestamp authorities, each checked here (${(page.match(/signed it/g) ?? []).length})`);
         must(/Bitcoin/.test(page), "ledger: where it stands with Bitcoin");
+        must(/Kiitos sums to zero/.test(page) && /Kiitti sums to zero/.test(page) && /no total/.test(page), "ledger: the two invariants are stated, with no total");
+        must(await ev(`[...document.querySelectorAll('.ex-leg')].filter(l=>/sums to zero/.test(l.textContent)).every(l=>!l.querySelector('.ex-ok'))`), "ledger: ⛔ no tick on the invariants, which this page cannot check");
         must(/What is never shown here/.test(page) && !/\bnull\b|undefined/.test(page), "ledger: what is never shown, and no stray null");
         must(await ev(`document.querySelector('a[data-nav=ledger]').getAttribute('aria-current')==='page'`), "ledger: its tab is current");
         const check = async (v) => { await ev(`(()=>{const t=document.querySelector('.ex-receipt');t.value=${JSON.stringify(v)};t.form.requestSubmit();})()`); await sleep(500); return ev("document.querySelector('.ex-receipt').form.parentElement.innerText"); };
