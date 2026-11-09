@@ -585,7 +585,7 @@ async function readLedger(): Promise<LedgerRead> {
         const pub: PublicEntry[] = [];
         for (const [index, e] of entries.entries()) {
             if (e.length === 32) continue;
-            const nul = e.indexOf(0), tag = text(e.subarray(0, nul)), m = /^ledger\/(season|jubilee|reads)\/v1$/.exec(tag);
+            const nul = e.indexOf(0), tag = text(e.subarray(0, nul)), m = /^ledger\/(season|jubilee|reads|proof)\/v1$/.exec(tag); // `proof`: a window of the zero-sum proof (ledger design/signed-proof.md), taught here before the first one exists
             if (nul < 0 || !m) return fail(say(`Entry ${index} is neither a sealed fingerprint nor a public entry.`, `ធាតុ ${index} មិនមែនជាស្នាមម្រាមដៃបិទត្រា ឬធាតុសាធារណៈទេ។`));
             pub.push({ index, ...JSON.parse(text(e.subarray(nul + 1))) });
         }
