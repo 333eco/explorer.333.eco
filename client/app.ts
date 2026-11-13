@@ -125,8 +125,10 @@ async function signerOf(entry: any, opening: unknown, at: string): Promise<{ ok:
     try { const r = await fetch(`https://333.eco/api/v1/names/${encodeURIComponent(at.slice(1))}`); if (r.ok) keys = ((await r.json()) as { keys?: typeof keys }).keys ?? []; } catch { /* below */ }
     const k = keys.find((x) => x.key === rev.passkeyPublicKey);
     if (!k) return { ok: null, text: say(`Not confirmed against ${at}'s page`, `មិនបានបញ្ជាក់ជាមួយទំព័ររបស់ ${at} ទេ`), fine: say("Its proof names a passkey that page doesn't show.", "ភស្តុតាងរបស់វាដាក់ឈ្មោះ passkey ដែលទំព័រនោះមិនបង្ហាញ។") };
-    const t = String(entry.witnessedAt ?? "");
-    if (k.until && t >= k.until) return { ok: null, text: say(`Not confirmed against ${at}'s page`, `មិនបានបញ្ជាក់ជាមួយទំព័ររបស់ ${at} ទេ`), fine: say(`That page showed this passkey until ${date(k.until)}, and this was signed later.`, `ទំព័រនោះបានបង្ហាញ passkey នេះរហូតដល់ ${date(k.until)} ហើយនេះត្រូវបានចុះហត្ថលេខាក្រោយមក។`) };
+    // As times, never as text: the log writes a signing to the minute ("…T04:33Z") and a removal to the millisecond, and as text
+    // "04:33Z" sorts AFTER "04:33:35" (2026-11-12).
+    const t = Date.parse(String(entry.witnessedAt ?? ""));
+    if (k.until && t >= Date.parse(k.until)) return { ok: null, text: say(`Not confirmed against ${at}'s page`, `មិនបានបញ្ជាក់ជាមួយទំព័ររបស់ ${at} ទេ`), fine: say(`That page showed this passkey until ${date(k.until)}, and this was signed later.`, `ទំព័រនោះបានបង្ហាញ passkey នេះរហូតដល់ ${date(k.until)} ហើយនេះត្រូវបានចុះហត្ថលេខាក្រោយមក។`) };
     return { ok: true, text: say(`Signed with ${at}'s passkey`, `បានចុះហត្ថលេខាដោយ passkey របស់ ${at}`),
         fine: k.until ? say(`Their page showed it from ${date(k.since)} to ${date(k.until)}. It shows that a passkey signed, not who held it.`, `ទំព័ររបស់ពួកគេបានបង្ហាញវាពី ${date(k.since)} ដល់ ${date(k.until)}។ វាបង្ហាញថា passkey មួយបានចុះហត្ថលេខា មិនមែនថាអ្នកណាកាន់វាទេ។`)
             : say(`Their page shows it, since ${date(k.since)}. It shows that a passkey signed, not who held it.`, `ទំព័ររបស់ពួកគេបង្ហាញវា តាំងពី ${date(k.since)}។ វាបង្ហាញថា passkey មួយបានចុះហត្ថលេខា មិនមែនថាអ្នកណាកាន់វាទេ។`) };
