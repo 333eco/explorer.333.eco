@@ -3,10 +3,11 @@
  * ⛔ No ranking, no counters that climb, no rates. ⛔ No word about outside witnesses until they exist (A515). The gratitude ledger shows proofs only (ledger SPEC §4.4). DRAFT Khmer (ours).
  */
 // @ts-expect-error the published verifier ships no types
-import { auditLog, checkCheckpoint, checkOts, checkpointBody, checkTimestamp, findRecords, hashLeaf, packRecord, readEntries, treeRoot, verifyPack } from "@333eco/origin-verify";
+import { auditLog, checkCheckpoint, checkOts, checkpointBody, checkTimestamp, checkWitnessSignature, findRecords, hashLeaf, packRecord, readEntries, treeRoot, verifyPack } from "@333eco/origin-verify";
 import ledgerTrust from "./ledger-trust";
+import { matchWaiting, readWaiting as readWaitingFrom } from "./waiting";
 // @ts-expect-error the same
-import { canvasDecoder, hashFile } from "@333eco/origin-verify/media";
+import { canvasDecoder, hashFile, phashDistance } from "@333eco/origin-verify/media";
 // @ts-expect-error the same
 import trust from "@333eco/origin-verify/trust";
 
@@ -105,7 +106,13 @@ function bitcoinRow(out: { bitcoin: { height: number; time: string }[]; bitcoinU
 }
 interface Entry { t: string; index: number; witnessedAt?: string; target?: number; claim?: { sha256: string; source: string; rights?: string; tool: string; mime: string; declared: boolean } }
 interface Log { ok: boolean; why?: string; size: number; entries: Entry[]; stamps: { tsa?: number[]; ots?: number[] } }
-let logCache: Log | null = null, shown = PAGE, found: { how: string; index: number; distance?: number }[] | null = null, searchNote = "";
+let logCache: Log | null = null, shown = PAGE, found: { how: string; index: number; distance?: number; waiting?: boolean }[] | null = null, searchNote = "";
+// Signed, and waiting for the log's next checkpoint (founder 2026-11-12: "found but awaits the next checkpoint", never an empty
+// result). sign.333.eco lists them; each is checked HERE against the log's own record key, so the list is never trusted, and the
+// whole list is read, so no one learns which file was looked for. A list that can't be read is no waiting entries, said nowhere.
+// The list and the match live in ./waiting (tested on their own by scripts/check-waiting.mjs, against a real signed entry).
+const readWaiting = (size: number) => readWaitingFrom(size, trust, checkWitnessSignature);
+const WAITS: [string, string] = ["Signed. It joins the public log at its next checkpoint, within the hour.", "បានចុះហត្ថលេខា។ វាចូលរួមក្នុងកំណត់ហេតុសាធារណៈនៅចំណុចត្រួតពិនិត្យបន្ទាប់ ក្នុងរយៈពេលមួយម៉ោង។"];
 async function readLog(): Promise<Log> {
     if (logCache) return logCache;
     let out: Log;
@@ -127,7 +134,8 @@ async function searchFile(file: File, l: Log) {
     searchNote = say("Reading the file on this device…", "កំពុងអានឯកសារនៅលើឧបករណ៍នេះ…"); found = null; paint();
     try {
         const hashes = await hashFile(new Uint8Array(await file.arrayBuffer()), { decode: (b: Uint8Array) => canvasDecoder(b, file.type) });
-        found = (await findRecords(logGet, l.size, hashes)).map((m: { how: string; index: number; distance?: number }) => ({ how: m.how, index: m.index, distance: m.distance }));
+        found = [...(await findRecords(logGet, l.size, hashes)).map((m: { how: string; index: number; distance?: number }) => ({ how: m.how, index: m.index, distance: m.distance })),
+            ...matchWaiting(hashes, await readWaiting(l.size), phashDistance)];
         searchNote = say("The file was never uploaded. Only its fingerprint was compared.", "ឯកសារមិនត្រូវបានផ្ទុកឡើងទេ។ មានតែស្នាមម្រាមដៃរបស់វាប៉ុណ្ណោះដែលត្រូវបានប្រៀបធៀប។");
     } catch { found = []; searchNote = say("That file couldn't be read.", "មិនអាចអានឯកសារនោះបានទេ។"); }
     paint();
@@ -138,7 +146,11 @@ function searchBox(l: Log) {
         e.preventDefault();
         const q = input.value.replace(/[\s#]/g, "").toLowerCase();
         if (/^\d{1,12}$/.test(q)) return nav(`/origin/${Number(q)}`);
-        if (/^[0-9a-f]{64}$/.test(q)) { found = l.entries.filter((x) => x.claim?.sha256 === q).map((x) => ({ how: "exact", index: x.index })); searchNote = ""; return paint(); }
+        if (/^[0-9a-f]{64}$/.test(q)) {
+            found = l.entries.filter((x) => x.claim?.sha256 === q).map((x) => ({ how: "exact", index: x.index })); searchNote = ""; paint();
+            void readWaiting(l.size).then((w) => { const more = matchWaiting({ sha256: q }, w); if (more.length && found) { found = [...found, ...more]; paint(); } });
+            return;
+        }
         found = null; searchNote = say("Type a record number, or a fingerprint of 64 characters.", "វាយលេខកំណត់ត្រា ឬស្នាមម្រាមដៃ 64 តួអក្សរ។"); paint();
     };
     return h("div", {}, h("form", { class: "ex-search", role: "search", onsubmit: go }, input, h("button", { class: "btn", type: "submit" }, say("Find", "រក"))),
@@ -149,7 +161,7 @@ function results() {
     if (found === null) return searchNote ? h("p", { class: "fine", role: "status" }, searchNote) : null;
     const certain = [...found].sort((a, b) => (a.how === "similar" ? 1 : 0) - (b.how === "similar" ? 1 : 0) || (a.distance ?? 0) - (b.distance ?? 0));
     return card(h("h2", {}, found.length ? say(`${found.length} found`, `រកឃើញ ${found.length}`) : say("No record matches", "គ្មានកំណត់ត្រាត្រូវគ្នាទេ")),
-        ...certain.map((m) => h("a", { class: "ex-row", href: `/origin/${m.index}` }, h("b", {}, `#${n(m.index)}`), h("span", {}, HOW[m.how]?.[isKm() ? 1 : 0] ?? m.how))),
+        ...certain.map((m) => h("a", { class: "ex-row", href: `/origin/${m.index}` }, h("b", {}, `#${n(m.index)}`), h("span", {}, HOW[m.how]?.[isKm() ? 1 : 0] ?? m.how, m.waiting ? h("span", { class: "fine" }, " · ", say(...WAITS)) : null))),
         searchNote ? h("p", { class: "fine" }, searchNote) : null);
 }
 async function originPage() {
@@ -178,7 +190,15 @@ async function recordPage(index: number) {
     try {
         l = await readLog();
         if (!l.ok) return fail(say("The log didn't pass its check", "កំណត់ហេតុមិនបានឆ្លងការពិនិត្យទេ"), l.why ?? "");
-        if (index >= l.size) return view.replaceChildren(title, card(h("p", {}, say("The log doesn't have this entry. A new record joins at its next checkpoint, within the hour.", "កំណត់ហេតុមិនមានធាតុនេះទេ។ កំណត់ត្រាថ្មីចូលរួមនៅចំណុចត្រួតពិនិត្យបន្ទាប់ ក្នុងរយៈពេលមួយម៉ោង។"))), link("/origin", say("All records", "កំណត់ត្រាទាំងអស់")));
+        if (index >= l.size) {
+            const w = (await readWaiting(l.size)).find((e) => e.index === index && e.t === "record");
+            if (route().name !== "record") return;
+            if (w) return view.replaceChildren(title, card(leg(null, say("Signed, waiting for the next checkpoint", "បានចុះហត្ថលេខា កំពុងរង់ចាំចំណុចត្រួតពិនិត្យបន្ទាប់"),
+                    say("The log's own key signed this entry, checked in your browser just now. It joins the public log at its next checkpoint, within the hour; then this page checks it in full.", "កូនសោរបស់កំណត់ហេតុផ្ទាល់បានចុះហត្ថលេខាលើធាតុនេះ ដែលបានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នកមុននេះ។ វាចូលរួមក្នុងកំណត់ហេតុសាធារណៈនៅចំណុចត្រួតពិនិត្យបន្ទាប់ ក្នុងរយៈពេលមួយម៉ោង បន្ទាប់មកទំព័រនេះពិនិត្យវាពេញលេញ។")),
+                    h("p", {}, say("Signed (UTC) ", "បានចុះហត្ថលេខា (UTC) "), date(w.witnessedAt ?? ""), " · ", label(w.claim.source), w.claim.rights ? ` · ${w.claim.rights}` : ""),
+                    h("p", { class: "fine" }, say("File fingerprint ", "ស្នាមម្រាមដៃឯកសារ "), full(w.claim.sha256))), link("/origin", say("All records", "កំណត់ត្រាទាំងអស់")));
+            return view.replaceChildren(title, card(h("p", {}, say("The log doesn't have this entry. A new record joins at its next checkpoint, within the hour.", "កំណត់ហេតុមិនមានធាតុនេះទេ។ កំណត់ត្រាថ្មីចូលរួមនៅចំណុចត្រួតពិនិត្យបន្ទាប់ ក្នុងរយៈពេលមួយម៉ោង។"))), link("/origin", say("All records", "កំណត់ត្រាទាំងអស់")));
+        }
         pack = await packRecord(logGet, index, trust);
         out = await verifyPack(pack, trust, { header: headerOf });
     } catch (e) { return fail(say("This record couldn't be checked", "មិនអាចពិនិត្យកំណត់ត្រានេះបានទេ"), (e as Error).message); }
