@@ -21,3 +21,5 @@ a.ex-doc{display:block;text-decoration:none;color:inherit;margin-bottom:10px}a.e
 .ex-raw{margin:8px 0 0;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}.ex-entry{margin-bottom:10px}.card details summary{cursor:pointer;font-weight:600}.card details{margin-top:12px}.ex-entry details{margin:0}
 /* The ledger page's receipt box: the whole width of its card (founder 2026-11-07). */
 .ex-receipt { display: block; width: 100%; box-sizing: border-box; margin: .5rem 0; font: inherit; font-family: var(--mono, ui-monospace, monospace); font-size: .85em; }
+/* A B-Mail's signed body, as text (founder 2026-11-12). */
+.ex-mail{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0 0;font:inherit;line-height:1.55}

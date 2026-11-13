@@ -12,6 +12,10 @@ import { canvasDecoder, hashFile, phashDistance } from "@333eco/origin-verify/me
 import trust from "@333eco/origin-verify/trust";
 
 const LOG = "https://log.333.eco/origin/", INDEX = "https://corpus.333.eco/provenance.json", PAGE = 50;
+// A B-Mail's check link carries the message and its proof in the FRAGMENT. Read once, here, and cleared from the address before any
+// other script runs (the analytics beacons load deferred), so no server, beacon or history entry keeps it (founder 2026-11-12).
+const BMAIL_HASH = location.pathname.replace(/\/+$/, "") === "/b-mail" ? location.hash.slice(1) : "";
+if (BMAIL_HASH) history.replaceState(null, "", location.pathname);
 const isKm = () => document.documentElement.lang === "km";
 const say = (en: string, km: string) => (isKm() ? km : en);
 const view = { el: document.getElementById("view") as HTMLElement, replaceChildren(...kids: Kid[]) { this.el.replaceChildren(...(kids.filter(Boolean) as (Node | string)[])); } }; // a null handed to the DOM prints "null"
@@ -202,6 +206,45 @@ function results() {
         ...certain.map((m) => h("div", {}, h("a", { class: "ex-row", href: `/origin/${m.index}` }, h("b", {}, `#${n(m.index)}`), h("span", {}, HOW[m.how]?.[isKm() ? 1 : 0] ?? m.how, m.waiting ? h("span", { class: "fine" }, " · ", say(...WAITS)) : null)),
             m.signer ? leg(m.signer.ok, m.signer.text, m.signer.fine ?? "") : null)),
         searchNote ? h("p", { class: "fine" }, searchNote) : null);
+}
+/**
+ * A B-Mail, checked from its emblem (founder 2026-11-12: the emblem links to the signed text and its proof, in place of two
+ * attachments). It finds the record of this EXACT message, checks the proof's passkey against the sender's @name page, and shows the
+ * message as it was signed. ⭐ A link copied into another mail still shows THIS message, which is how a copy is told apart: the page
+ * says to compare. ⛔ Never "verified": it says which passkey signed and what that page shows.
+ */
+async function bmailPage() {
+    const title = head(say("A B-Mail", "B-Mail មួយ"), say("The exact message that was signed, checked in your browser just now. Compare it with the mail you received.", "សារពិតប្រាកដដែលបានចុះហត្ថលេខា ដែលបានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នកមុននេះ។ សូមប្រៀបធៀបវាជាមួយសំបុត្រដែលអ្នកបានទទួល។"));
+    view.replaceChildren(title, card(h("p", { role: "status" }, say("Checking this message…", "កំពុងពិនិត្យសារនេះ…"))));
+    const q = new URLSearchParams(BMAIL_HASH);
+    let text = "", proof: { index?: number; opening?: unknown } | null = null;
+    try { text = new TextDecoder("utf-8", { fatal: true }).decode(unb64(q.get("m") ?? "")); } catch { /* below */ }
+    try { proof = JSON.parse(new TextDecoder().decode(unb64(q.get("p") ?? ""))); } catch { /* the name is then not checked */ }
+    if (!text.startsWith("b-mail/v1\n")) return view.replaceChildren(title, card(leg(false, say("This link holds no B-Mail", "តំណនេះមិនមាន B-Mail ទេ"), say("Open it from the emblem in the mail.", "សូមបើកវាពីនិមិត្តសញ្ញានៅក្នុងសំបុត្រ។"))));
+    const l = await readLog();
+    if (route().name !== "bmail") return;
+    if (!l.ok) return view.replaceChildren(title, card(leg(false, say("The log didn't pass its check", "កំណត់ហេតុមិនបានឆ្លងការពិនិត្យទេ"), l.why ?? "")));
+    const sha = hex(new Uint8Array(await crypto.subtle.digest("SHA-256", enc(text))));
+    let entry: any = l.entries.find((e) => e.t === "record" && e.claim?.sha256 === sha), waiting = false;
+    if (!entry) { entry = (await readWaiting(l.size)).find((e) => e.t === "record" && e.claim?.sha256 === sha); waiting = !!entry; }
+    const rows: Kid[] = [];
+    if (!entry) rows.push(leg(false, say("No record of this exact message", "គ្មានកំណត់ត្រានៃសារពិតប្រាកដនេះទេ"), say("It was never signed, or it was changed after signing.", "វាមិនដែលត្រូវបានចុះហត្ថលេខា ឬត្រូវបានផ្លាស់ប្តូរបន្ទាប់ពីចុះហត្ថលេខា។")));
+    else {
+        rows.push(leg(true, say(`This exact message is record #${n(entry.index)}`, `សារពិតប្រាកដនេះគឺជាកំណត់ត្រា #${n(entry.index)}`),
+            waiting ? say(...WAITS) : say(`Signed ${date(entry.witnessedAt ?? "")} (UTC). `, `បានចុះហត្ថលេខា ${date(entry.witnessedAt ?? "")} (UTC)។ `), " ", link(`/origin/${entry.index}`, say("The record", "កំណត់ត្រា"))));
+        const gone = withdrawnOf(l).get(entry.index);
+        if (gone) rows.push(leg(false, say(`The signer withdrew it on ${date(gone)}`, `អ្នកចុះហត្ថលេខាបានដកវានៅ ${date(gone)}`), ""));
+        const at = /^name: (@[A-Za-z0-9._-]{1,64})$/m.exec(text.slice(0, text.indexOf("\n\n") + 1))?.[1];
+        if (at && proof?.index === entry.index && proof.opening) { const sg = await signerOf(entry, proof.opening, at); rows.push(leg(sg.ok, sg.text, sg.fine ?? "")); }
+    }
+    // The message as it was signed: who it was from and to, the subject, each attachment by its fingerprint, then the body.
+    const cut = text.indexOf("\n\n"), lines = text.slice(10, cut).split("\n"), body = text.slice(cut + 2);
+    const LABEL: Record<string, [string, string]> = { from: ["From", "ពី"], to: ["To", "ទៅ"], cc: ["Cc", "Cc"], subject: ["Subject", "ប្រធានបទ"], name: ["Signed as", "បានចុះហត្ថលេខាជា"], attachment: ["Attachment", "ឯកសារភ្ជាប់"] };
+    const kv = lines.map((x) => /^([a-z]+): (.*)$/.exec(x)).filter((m): m is RegExpExecArray => !!m && m[1] in LABEL)
+        .flatMap((m) => [h("dt", {}, LABEL[m[1]][isKm() ? 1 : 0]), h("dd", {}, m[1] === "attachment" ? m[2].replace(/^([0-9a-f]{12})[0-9a-f]+ /, "$1… ") : m[2])]);
+    if (route().name !== "bmail") return;
+    view.replaceChildren(title, card(...rows), card(h("dl", { class: "ex-kv" }, ...kv), h("pre", { class: "ex-mail" }, body)),
+        h("p", { class: "fine" }, say("A link copied into another mail still shows this message, so what you see here is what was signed.", "តំណដែលបានចម្លងទៅក្នុងសំបុត្រផ្សេងទៀតនៅតែបង្ហាញសារនេះ ដូច្នេះអ្វីដែលអ្នកឃើញនៅទីនេះគឺជាអ្វីដែលបានចុះហត្ថលេខា។")));
 }
 async function originPage() {
     const title = head(say("Records", "កំណត់ត្រា"), say("A public log of what people chose to sign. It only ever grows, and every entry below was checked in your browser just now.", "កំណត់ហេតុសាធារណៈនៃអ្វីដែលមនុស្សបានជ្រើសរើសចុះហត្ថលេខា។ វាគ្រាន់តែកើនឡើង ហើយកំណត់ត្រានីមួយៗខាងក្រោមត្រូវបានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នកមុននេះបន្តិច។"));
@@ -727,8 +770,9 @@ async function ledgerPage() {
 }
 
 /* ─────────────── Pages ─────────────── */
-function route(): { name: "origin" } | { name: "ledger" } | { name: "record"; index: number } | { name: "proof"; index: number } | { name: "view"; src: string; entry: number | null } | { name: "corpus" } | { name: "doc"; slug: string } {
+function route(): { name: "origin" } | { name: "bmail" } | { name: "ledger" } | { name: "record"; index: number } | { name: "proof"; index: number } | { name: "view"; src: string; entry: number | null } | { name: "corpus" } | { name: "doc"; slug: string } {
     const p = location.pathname.replace(/\/+$/, "");
+    if (p === "/b-mail") return { name: "bmail" };
     const rec = /^\/origin\/(\d{1,12})$/.exec(p), doc = /^\/corpus\/([a-z0-9-]+)$/.exec(p);
     const prf = /^\/origin\/(\d{1,12})\/proof$/.exec(p);
     if (prf) return { name: "proof", index: Number(prf[1]) };
@@ -742,7 +786,7 @@ function paint() {
     const r = route(), area = r.name === "ledger" ? "ledger" : r.name === "corpus" || r.name === "doc" || (r.name === "view" && !r.src.startsWith(LOG)) ? "corpus" : "origin";
     document.querySelectorAll<HTMLElement>("[data-nav]").forEach((a) => { if (a.dataset.nav === area) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
     document.title = r.name === "ledger" ? `${say("Gratitude ledger", "បញ្ជីការដឹងគុណ")} · explorer.333.eco` : `${r.name === "view" ? say("A source file", "ឯកសារប្រភព") : r.name === "proof" ? say(`Proof of record #${r.index}`, `ភស្តុតាងនៃកំណត់ត្រា #${r.index}`) : r.name === "record" ? say(`Record #${r.index}`, `កំណត់ត្រា #${r.index}`) : area === "corpus" ? say("Corpus", "សារពើភ័ណ្ឌឯកសារ") : say("Records", "កំណត់ត្រា")} · B-Explorer`;
-    const run = r.name === "ledger" ? ledgerPage() : r.name === "view" ? viewPage(r.src, r.entry) : r.name === "proof" ? proofPage(r.index) : r.name === "record" ? recordPage(r.index) : r.name === "doc" ? docPage(r.slug) : r.name === "corpus" ? corpusPage() : originPage();
+    const run = r.name === "bmail" ? bmailPage() : r.name === "ledger" ? ledgerPage() : r.name === "view" ? viewPage(r.src, r.entry) : r.name === "proof" ? proofPage(r.index) : r.name === "record" ? recordPage(r.index) : r.name === "doc" ? docPage(r.slug) : r.name === "corpus" ? corpusPage() : originPage();
     run.catch((e) => view.replaceChildren(card(leg(false, say("That didn't work", "វាមិនដំណើរការទេ"), String(e.message ?? e)))));
 }
 function nav(path: string) { history.pushState(null, "", path); window.scrollTo(0, 0); found = null; searchNote = ""; paint(); }
