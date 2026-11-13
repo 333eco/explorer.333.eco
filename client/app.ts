@@ -100,7 +100,8 @@ function bitcoinRow(out: { bitcoin: { height: number; time: string }[]; bitcoinU
     const earliest = [...out.bitcoin].sort((a, b) => a.height - b.height)[0], unchecked = out.bitcoinUnchecked ?? [];
     if (earliest) return leg(true, "Bitcoin", blockLink(earliest.height), " · ", say(`No later than ${when(earliest.time)} · `, `មិនយឺតជាង ${when(earliest.time)} · `), source(proof));
     if (unchecked.length) return leg(null, "Bitcoin", blockLink(Math.min(...unchecked)), ". ", say("The proof names this block, which couldn't be read just now, so the verifier below checks it.", "ភស្តុតាងដាក់ឈ្មោះប្លុកនេះ ដែលមិនអាចអានបានឥឡូវនេះ ដូច្នេះកម្មវិធីផ្ទៀងផ្ទាត់ខាងក្រោមពិនិត្យវា។"));
-    if (out.bitcoinPending?.length) return leg(null, "Bitcoin", say("Waiting for a block. This takes a few hours.", "កំពុងរង់ចាំប្លុក។ វាចំណាយពេលពីរបីម៉ោង។"));
+    // The proof file exists while it waits, and the viewer reads it ("Still waiting"), so it links its source like every other row (2026-11-12).
+    if (out.bitcoinPending?.length) return leg(null, "Bitcoin", say("Waiting for a block. This takes a few hours. · ", "កំពុងរង់ចាំប្លុក។ វាចំណាយពេលពីរបីម៉ោង។ · "), source(proof));
     if (!stamped) return leg(null, "Bitcoin", say("The log is stamped to Bitcoin once a day, and this record joins the next stamp. A few hours later that proof reaches a block.", "កំណត់ហេតុត្រូវបានបោះត្រាទៅ Bitcoin ម្តងក្នុងមួយថ្ងៃ ហើយកំណត់ត្រានេះចូលរួមក្នុងការបោះត្រាបន្ទាប់។ ពីរបីម៉ោងក្រោយមក ភស្តុតាងនោះទៅដល់ប្លុក។"));
     return null;
 }
@@ -642,12 +643,17 @@ async function ledgerStamps(l: LedgerRead, into: HTMLElement) {
         const got = await checkTimestamp(tsr, body, (roots as string[]).map(unb64)).catch(() => ({ ok: false }));
         rows.push(got.ok ? leg(true, say(`${name} signed it`, `${name} បានចុះហត្ថលេខា`), say(`No later than ${when(got.time)}`, `មិនយឺតជាង ${when(got.time)}`)) : leg(false, say(`${name}'s token does not verify`, `សញ្ញារបស់ ${name} មិនត្រឹមត្រូវទេ`), ""));
     }
-    const ots = await ledgerGet(`stamps/${s}.ots`);
-    if (ots) {
-        const a = await anchorOf(ots, new Uint8Array(await crypto.subtle.digest("SHA-256", body)));
-        rows.push(a.height !== undefined ? leg(a.checked, "Bitcoin", blockLink(a.height), a.time ? say(` · no later than ${when(a.time)}`, ` · មិនយឺតជាង ${when(a.time)}`) : "")
-            : leg(null, "Bitcoin", say("Waiting for a block. This takes a few hours.", "កំពុងរង់ចាំប្លុក។ វាចំណាយពេលពីរបីម៉ោង។")));
-    }
+    // Bitcoin from the newest state that HAS a proof, and only a proof the index lists (founder 2026-11-12, "fix 1792.ots": the newest
+    // state had its authorities' tokens and no Bitcoin proof, so this asked for a file that doesn't exist and the row vanished).
+    const otsSizes = l.stamps.ots ?? [], o = otsSizes.includes(s) ? s : Math.max(0, ...otsSizes);
+    const ots = o ? await ledgerGet(`stamps/${o}.ots`) : null, oBody = o === s ? body : ots ? await ledgerGet(`checkpoints/${o}`).then((b) => (b ? enc(checkpointBody(text(b))) : null)) : null;
+    if (ots && oBody) {
+        const a = await anchorOf(ots, new Uint8Array(await crypto.subtle.digest("SHA-256", oBody)));
+        const at = o === s ? "" : say(`At ${count(o, "entry", "entries")}: `, `នៅ ${n(o)} ធាតុ៖ `);
+        rows.push(a.height !== undefined ? leg(a.checked, "Bitcoin", at, blockLink(a.height), a.time ? say(` · no later than ${when(a.time)}`, ` · មិនយឺតជាង ${when(a.time)}`) : "")
+            : leg(null, "Bitcoin", at, say("Waiting for a block. This takes a few hours.", "កំពុងរង់ចាំប្លុក។ វាចំណាយពេលពីរបីម៉ោង។")));
+        if (o !== s) rows.push(h("p", { class: "fine" }, say(`The state at ${count(s, "entry", "entries")} gets its Bitcoin proof at the next close.`, `ស្ថានភាពនៅ ${n(s)} ធាតុ ទទួលបានភស្តុតាង Bitcoin នៅការបិទបន្ទាប់។`)));
+    } else rows.push(leg(null, "Bitcoin", say("The ledger's first Bitcoin proof comes with its next close.", "ភស្តុតាង Bitcoin ដំបូងរបស់បញ្ជីមកជាមួយការបិទបន្ទាប់។")));
     into.replaceChildren(h("p", {}, say(`The ledger's state at ${count(s, "entry", "entries")} was timestamped outside our control:`, `ស្ថានភាពនៃបញ្ជីនៅ ${n(s)} ធាតុ ត្រូវបានបោះត្រាពេលវេលានៅក្រៅការគ្រប់គ្រងរបស់យើង៖`)), ...rows);
 }
 async function ledgerPage() {
