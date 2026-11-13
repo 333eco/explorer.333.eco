@@ -3,7 +3,7 @@
  * ⛔ No ranking, no counters that climb, no rates. ⛔ No word about outside witnesses until they exist (A515). The gratitude ledger shows proofs only (ledger SPEC §4.4). DRAFT Khmer (ours).
  */
 // @ts-expect-error the published verifier ships no types
-import { auditLog, checkCheckpoint, checkOts, checkpointBody, checkTimestamp, checkWitnessSignature, findRecords, hashLeaf, packRecord, readEntries, treeRoot, verifyPack } from "@333eco/origin-verify";
+import { auditLog, checkCheckpoint, checkOts, checkpointBody, checkReveal, checkTimestamp, checkWitnessSignature, findRecords, hashLeaf, packRecord, readEntries, treeRoot, verifyPack } from "@333eco/origin-verify";
 import ledgerTrust from "./ledger-trust";
 import { matchWaiting, readWaiting as readWaitingFrom } from "./waiting";
 // @ts-expect-error the same
@@ -107,7 +107,26 @@ function bitcoinRow(out: { bitcoin: { height: number; time: string }[]; bitcoinU
 }
 interface Entry { t: string; index: number; witnessedAt?: string; target?: number; claim?: { sha256: string; source: string; rights?: string; tool: string; mime: string; declared: boolean } }
 interface Log { ok: boolean; why?: string; size: number; entries: Entry[]; stamps: { tsa?: number[]; ots?: number[] } }
-let logCache: Log | null = null, shown = PAGE, found: { how: string; index: number; distance?: number; waiting?: boolean }[] | null = null, searchNote = "";
+let logCache: Log | null = null, shown = PAGE, found: { how: string; index: number; distance?: number; waiting?: boolean; signer?: { ok: boolean | null; text: string; fine?: string } }[] | null = null, searchNote = "";
+/**
+ * A B-Mail chosen WITH its proof (A607 point 3): the proof names the passkey that signed; the signed text names the sender's @name;
+ * their page at 333.eco lists the passkeys that sign as them. All three are checked here. ⛔ Never "verified": it says which
+ * passkey signed and what that page shows, no more. A page that can't confirm it says only that, never why (a name's absence is
+ * never drawn).
+ */
+async function signerOf(entry: any, opening: unknown, at: string): Promise<{ ok: boolean | null; text: string; fine?: string }> {
+    const rev = await checkReveal(entry, opening, trust).catch(() => ({ ok: false }));
+    if (!rev.ok) return { ok: false, text: say("Its proof doesn't fit this record", "ភស្តុតាងរបស់វាមិនត្រូវនឹងកំណត់ត្រានេះទេ") };
+    let keys: { key: string; since: string; until: string | null }[] = [];
+    try { const r = await fetch(`https://333.eco/api/v1/names/${encodeURIComponent(at.slice(1))}`); if (r.ok) keys = ((await r.json()) as { keys?: typeof keys }).keys ?? []; } catch { /* below */ }
+    const k = keys.find((x) => x.key === rev.passkeyPublicKey);
+    if (!k) return { ok: null, text: say(`Not confirmed against ${at}'s page`, `មិនបានបញ្ជាក់ជាមួយទំព័ររបស់ ${at} ទេ`), fine: say("Its proof names a passkey that page doesn't show.", "ភស្តុតាងរបស់វាដាក់ឈ្មោះ passkey ដែលទំព័រនោះមិនបង្ហាញ។") };
+    const t = String(entry.witnessedAt ?? "");
+    if (k.until && t >= k.until) return { ok: null, text: say(`Not confirmed against ${at}'s page`, `មិនបានបញ្ជាក់ជាមួយទំព័ររបស់ ${at} ទេ`), fine: say(`That page showed this passkey until ${date(k.until)}, and this was signed later.`, `ទំព័រនោះបានបង្ហាញ passkey នេះរហូតដល់ ${date(k.until)} ហើយនេះត្រូវបានចុះហត្ថលេខាក្រោយមក។`) };
+    return { ok: true, text: say(`Signed with ${at}'s passkey`, `បានចុះហត្ថលេខាដោយ passkey របស់ ${at}`),
+        fine: k.until ? say(`Their page showed it from ${date(k.since)} to ${date(k.until)}. It shows that a passkey signed, not who held it.`, `ទំព័ររបស់ពួកគេបានបង្ហាញវាពី ${date(k.since)} ដល់ ${date(k.until)}។ វាបង្ហាញថា passkey មួយបានចុះហត្ថលេខា មិនមែនថាអ្នកណាកាន់វាទេ។`)
+            : say(`Their page shows it, since ${date(k.since)}. It shows that a passkey signed, not who held it.`, `ទំព័ររបស់ពួកគេបង្ហាញវា តាំងពី ${date(k.since)}។ វាបង្ហាញថា passkey មួយបានចុះហត្ថលេខា មិនមែនថាអ្នកណាកាន់វាទេ។`) };
+}
 // Signed, and waiting for the log's next checkpoint (founder 2026-11-12: "found but awaits the next checkpoint", never an empty
 // result). sign.333.eco lists them; each is checked HERE against the log's own record key, so the list is never trusted, and the
 // whole list is read, so no one learns which file was looked for. A list that can't be read is no waiting entries, said nowhere.
@@ -131,12 +150,29 @@ async function readLog(): Promise<Log> {
     return out;
 }
 const withdrawnOf = (l: Log) => new Map(l.entries.filter((e) => e.t === "withdraw").map((e) => [e.target!, e.witnessedAt!]));
-async function searchFile(file: File, l: Log) {
+async function searchFile(files: File[], l: Log) {
     searchNote = say("Reading the file on this device…", "កំពុងអានឯកសារនៅលើឧបករណ៍នេះ…"); found = null; paint();
+    // A record's proof chosen alongside (B-Mail-proof.json): kept apart, never hashed as the file.
+    const proofs: { index: number; opening: unknown }[] = [], content: File[] = [];
+    for (const f of files) {
+        if (/\.json$/i.test(f.name)) { try { const j = JSON.parse(await f.text()); if (j?.kind === "b-origin-proof" && Number.isInteger(j.index) && j.opening) { proofs.push(j); continue; } } catch { /* an ordinary file */ } }
+        content.push(f);
+    }
+    const file = content[0];
+    if (!file) { found = []; searchNote = say("Choose the file too, not only its proof.", "សូមជ្រើសរើសឯកសារផងដែរ មិនមែនតែភស្តុតាងរបស់វាទេ។"); return paint(); }
     try {
-        const hashes = await hashFile(new Uint8Array(await file.arrayBuffer()), { decode: (b: Uint8Array) => canvasDecoder(b, file.type) });
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const hashes = await hashFile(bytes, { decode: (b: Uint8Array) => canvasDecoder(b, file.type) });
+        const waiting = await readWaiting(l.size);
         found = [...(await findRecords(logGet, l.size, hashes)).map((m: { how: string; index: number; distance?: number }) => ({ how: m.how, index: m.index, distance: m.distance })),
-            ...matchWaiting(hashes, await readWaiting(l.size), phashDistance)];
+            ...matchWaiting(hashes, waiting, phashDistance)];
+        // A B-Mail names its sender's @name inside what was signed; with its proof, check the passkey against that page.
+        const text = new TextDecoder().decode(bytes.subarray(0, 4096));
+        const at = text.startsWith("b-mail/v1\n") ? /^name: (@[A-Za-z0-9._-]{1,64})$/m.exec(text.slice(0, text.indexOf("\n\n") + 1))?.[1] : undefined;
+        if (at) for (const m of found.filter((x) => x.how === "exact")) {
+            const proof = proofs.find((p) => p.index === m.index), entry = l.entries.find((e) => e.index === m.index) ?? waiting.find((e) => e.index === m.index);
+            if (proof && entry) m.signer = await signerOf(entry, proof.opening, at);
+        }
         searchNote = say("The file was never uploaded. Only its fingerprint was compared.", "ឯកសារមិនត្រូវបានផ្ទុកឡើងទេ។ មានតែស្នាមម្រាមដៃរបស់វាប៉ុណ្ណោះដែលត្រូវបានប្រៀបធៀប។");
     } catch { found = []; searchNote = say("That file couldn't be read.", "មិនអាចអានឯកសារនោះបានទេ។"); }
     paint();
@@ -155,14 +191,16 @@ function searchBox(l: Log) {
         found = null; searchNote = say("Type a record number, or a fingerprint of 64 characters.", "វាយលេខកំណត់ត្រា ឬស្នាមម្រាមដៃ 64 តួអក្សរ។"); paint();
     };
     return h("div", {}, h("form", { class: "ex-search", role: "search", onsubmit: go }, input, h("button", { class: "btn", type: "submit" }, say("Find", "រក"))),
-        h("label", { class: "ex-file" }, say("or choose a file", "ឬជ្រើសរើសឯកសារ"), h("input", { type: "file", onchange: (e: Event) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) void searchFile(f, l); } })));
+        h("label", { class: "ex-file" }, say("or choose a file", "ឬជ្រើសរើសឯកសារ"), h("input", { type: "file", multiple: true, onchange: (e: Event) => { const fs = [...((e.target as HTMLInputElement).files ?? [])]; if (fs.length) void searchFile(fs, l); } })),
+        h("p", { class: "fine" }, say("For a B-Mail, choose both attachments: B-Mail.txt and B-Mail-proof.json.", "សម្រាប់ B-Mail សូមជ្រើសរើសឯកសារភ្ជាប់ទាំងពីរ៖ B-Mail.txt និង B-Mail-proof.json។")));
 }
 const HOW: Record<string, [string, string]> = { exact: ["This exact file", "ឯកសារនេះផ្ទាល់"], "same pixels": ["The same picture, saved as a different file", "រូបភាពដូចគ្នា រក្សាទុកជាឯកសារផ្សេង"], similar: ["A picture that looks alike. It may be a different one.", "រូបភាពដែលមើលទៅស្រដៀង។ វាអាចជារូបផ្សេង។"] };
 function results() {
     if (found === null) return searchNote ? h("p", { class: "fine", role: "status" }, searchNote) : null;
     const certain = [...found].sort((a, b) => (a.how === "similar" ? 1 : 0) - (b.how === "similar" ? 1 : 0) || (a.distance ?? 0) - (b.distance ?? 0));
     return card(h("h2", {}, found.length ? say(`${found.length} found`, `រកឃើញ ${found.length}`) : say("No record matches", "គ្មានកំណត់ត្រាត្រូវគ្នាទេ")),
-        ...certain.map((m) => h("a", { class: "ex-row", href: `/origin/${m.index}` }, h("b", {}, `#${n(m.index)}`), h("span", {}, HOW[m.how]?.[isKm() ? 1 : 0] ?? m.how, m.waiting ? h("span", { class: "fine" }, " · ", say(...WAITS)) : null))),
+        ...certain.map((m) => h("div", {}, h("a", { class: "ex-row", href: `/origin/${m.index}` }, h("b", {}, `#${n(m.index)}`), h("span", {}, HOW[m.how]?.[isKm() ? 1 : 0] ?? m.how, m.waiting ? h("span", { class: "fine" }, " · ", say(...WAITS)) : null)),
+            m.signer ? leg(m.signer.ok, m.signer.text, m.signer.fine ?? "") : null)),
         searchNote ? h("p", { class: "fine" }, searchNote) : null);
 }
 async function originPage() {
