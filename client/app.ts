@@ -6,6 +6,7 @@
 import { auditLog, checkCheckpoint, checkOts, checkpointBody, checkReveal, checkTimestamp, checkWitnessSignature, findRecords, hashLeaf, packRecord, readEntries, treeRoot, verifyPack } from "@333eco/origin-verify";
 import ledgerTrust from "./ledger-trust";
 import { matchWaiting, readWaiting as readWaitingFrom } from "./waiting";
+import { INVITE_HREF, invitationFor } from "./invite";
 // @ts-expect-error the same
 import { canvasDecoder, hashFile, phashDistance } from "@333eco/origin-verify/media";
 // @ts-expect-error the same
@@ -230,11 +231,12 @@ async function bmailPage() {
     let entry: any = l.entries.find((e) => e.t === "record" && e.claim?.sha256 === sha), waiting = false;
     if (!entry) { entry = (await readWaiting(l.size)).find((e) => e.t === "record" && e.claim?.sha256 === sha); waiting = !!entry; }
     const rows: Kid[] = [];
+    let gone: string | undefined;
     if (!entry) rows.push(leg(false, say("No record of this exact message", "គ្មានកំណត់ត្រានៃសារពិតប្រាកដនេះទេ"), say("It was never signed, or it was changed after signing.", "វាមិនដែលត្រូវបានចុះហត្ថលេខា ឬត្រូវបានផ្លាស់ប្តូរបន្ទាប់ពីចុះហត្ថលេខា។")));
     else {
         rows.push(leg(true, say(`This exact message is record #${n(entry.index)}`, `សារពិតប្រាកដនេះគឺជាកំណត់ត្រា #${n(entry.index)}`),
             waiting ? say(...WAITS) : say(`Signed ${date(entry.witnessedAt ?? "")} (UTC). `, `បានចុះហត្ថលេខា ${date(entry.witnessedAt ?? "")} (UTC)។ `), " ", link(`/origin/${entry.index}`, say("The record", "កំណត់ត្រា"))));
-        const gone = withdrawnOf(l).get(entry.index);
+        gone = withdrawnOf(l).get(entry.index);
         if (gone) rows.push(leg(false, say(`The signer withdrew it on ${date(gone)}`, `អ្នកចុះហត្ថលេខាបានដកវានៅ ${date(gone)}`), ""));
         const at = /^name: (@[A-Za-z0-9._-]{1,64})$/m.exec(text.slice(0, text.indexOf("\n\n") + 1))?.[1];
         if (at && proof?.index === entry.index && proof.opening) { const sg = await signerOf(entry, proof.opening, at); rows.push(leg(sg.ok, sg.text, sg.fine ?? "")); }
@@ -245,8 +247,14 @@ async function bmailPage() {
     const kv = lines.map((x) => /^([a-z]+): (.*)$/.exec(x)).filter((m): m is RegExpExecArray => !!m && m[1] in LABEL)
         .flatMap((m) => [h("dt", {}, LABEL[m[1]][isKm() ? 1 : 0]), h("dd", {}, m[1] === "attachment" ? m[2].replace(/^([0-9a-f]{12})[0-9a-f]+ /, "$1… ") : m[2])]);
     if (route().name !== "bmail") return;
+    // The invitation, stated once, on this page and never in the mail (§b-mail-viral-loop; invite.ts says when it may show).
+    const inviteAt = invitationFor(text, !!entry, !!gone);
     view.replaceChildren(title, card(...rows), card(h("dl", { class: "ex-kv" }, ...kv), h("pre", { class: "ex-mail" }, body)),
-        h("p", { class: "fine" }, say("A link copied into another mail still shows this message, so what you see here is what was signed.", "តំណដែលបានចម្លងទៅក្នុងសំបុត្រផ្សេងទៀតនៅតែបង្ហាញសារនេះ ដូច្នេះអ្វីដែលអ្នកឃើញនៅទីនេះគឺជាអ្វីដែលបានចុះហត្ថលេខា។")));
+        h("p", { class: "fine" }, say("A link copied into another mail still shows this message, so what you see here is what was signed.", "តំណដែលបានចម្លងទៅក្នុងសំបុត្រផ្សេងទៀតនៅតែបង្ហាញសារនេះ ដូច្នេះអ្វីដែលអ្នកឃើញនៅទីនេះគឺជាអ្វីដែលបានចុះហត្ថលេខា។")),
+        ...(inviteAt ? [card(h("p", { class: "ex-invite" },
+            say(`${inviteAt} is an @name: a page at 333.eco where people find someone and thank them by name. You can hold your own.`,
+                `${inviteAt} គឺជា @name៖ ទំព័រមួយនៅ 333.eco ដែលមនុស្សស្វែងរកនរណាម្នាក់ ហើយអរគុណគេតាមឈ្មោះ។ អ្នកក៏អាចកាន់ឈ្មោះផ្ទាល់ខ្លួនបានដែរ។`),
+            " ", link(INVITE_HREF, say("See 333.eco", "មើល 333.eco"))))] : []));
 }
 async function originPage() {
     const title = head(say("Records", "កំណត់ត្រា"), say("A public log of what people chose to sign. It only ever grows, and every entry below was checked in your browser just now.", "កំណត់ហេតុសាធារណៈនៃអ្វីដែលមនុស្សបានជ្រើសរើសចុះហត្ថលេខា។ វាគ្រាន់តែកើនឡើង ហើយកំណត់ត្រានីមួយៗខាងក្រោមត្រូវបានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នកមុននេះបន្តិច។"));

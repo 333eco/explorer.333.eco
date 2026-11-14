@@ -4,6 +4,7 @@
     "type": "module",
     "scripts": {
         "build": "node scripts/build.mjs",
+        "test": "node scripts/check-invite.mjs",
         "drive": "node scripts/drive.mjs"
     },
     "dependencies": {

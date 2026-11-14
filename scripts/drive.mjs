@@ -250,6 +250,15 @@ try {
     await ev(`document.querySelector('button[data-lang=km]').click()`); await until(`document.documentElement.lang==='km' && /ត្រាពេលវេលា/.test(document.querySelector('main').innerText)`, "Khmer"); await sleep(1500); await shot("6-doc-km");
     await go("/origin"); await until(`document.querySelector('table')`, "records in Khmer"); await shot("7-origin-km"); await ev(`document.querySelector('button[data-lang=en]').click()`); await until(`document.querySelector('table')`, "records"); await dark(true); await shot("8-origin-dark"); await dark(false);
     await size(1280, 800, false); await go("/corpus"); await until(`document.querySelector('.ex-doc')`, "desktop corpus"); await shot("9-corpus-desktop");
+    {   // The B-Mail check page (§b-mail-viral-loop): a mail that was never signed gets the failed check and NO invitation. The found
+        // path is client/invite.ts's own check (scripts/check-invite.mjs): a real record's text would be someone's mail.
+        const m = Buffer.from("b-mail/v1\nfrom: A <a@x.test>\nto: b@x.test\nname: @sokha.keo\nsubject: never signed\n\nHello.\n").toString("base64url");
+        await go(`/b-mail#m=${m}`); await until(`/No record of this exact message/.test(document.querySelector('main').innerText)`, "an unsigned B-Mail");
+        const invites = `[...document.querySelectorAll('main a')].some(a=>a.href.includes('from=b-mail'))`;
+        must(!(await ev(invites)), "an unsigned B-Mail gets the failed check and no invitation"); must((await ev("location.hash")) === "", "the message left the address once read");
+        await ev(`document.querySelector('main').insertAdjacentHTML('beforeend','<a href="https://333.eco/?from=b-mail">x</a>')`);
+        must(await ev(invites), "CONTROL: the same probe sees an invitation when one is there");
+    }
     must(errors.length === 0, `browser errors: ${errors.length ? errors.slice(0, 4).join(" || ").slice(0, 700) : "none"}`);
 } catch (e) { console.log("FAILED:", e.message.slice(0, 900)); code = 1; }
 finally { chrome.kill(); srv.close(); srv.closeAllConnections(); }
