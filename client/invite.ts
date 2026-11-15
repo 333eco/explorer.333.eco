@@ -11,6 +11,16 @@
  */
 export const INVITE_HREF = "https://333.eco/?from=b-mail";
 
+/**
+ * The second line (founder 2026-11-14: anyone can sign a mail at sign.333.eco/b-mail, live that day; his bar for it, P-BM3, "10%",
+ * registered before this line shipped). Shown beside any found record its signer has not withdrawn, with or without an @name:
+ * signing a mail needs none. `from=b-mail` marks the channel on OUR link; the page it opens reads only `lang` from its query.
+ */
+export const SIGN_HREF = "https://sign.333.eco/b-mail?from=b-mail";
+export function maySign(text: string, found: boolean, withdrawn: boolean): boolean {
+    return found && !withdrawn && text.startsWith("b-mail/v1\n") && text.indexOf("\n\n") > 0;
+}
+
 /** The @name to invite with, or null when the page must not invite. */
 export function invitationFor(text: string, found: boolean, withdrawn: boolean): string | null {
     if (!found || withdrawn || !text.startsWith("b-mail/v1\n")) return null;

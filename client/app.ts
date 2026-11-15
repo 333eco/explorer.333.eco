@@ -6,7 +6,7 @@
 import { auditLog, checkCheckpoint, checkOts, checkpointBody, checkReveal, checkTimestamp, checkWitnessSignature, findRecords, hashLeaf, packRecord, readEntries, treeRoot, verifyPack } from "@333eco/origin-verify";
 import ledgerTrust from "./ledger-trust";
 import { matchWaiting, readWaiting as readWaitingFrom } from "./waiting";
-import { INVITE_HREF, invitationFor } from "./invite";
+import { INVITE_HREF, SIGN_HREF, invitationFor, maySign } from "./invite";
 // @ts-expect-error the same
 import { canvasDecoder, hashFile, phashDistance } from "@333eco/origin-verify/media";
 // @ts-expect-error the same
@@ -254,7 +254,11 @@ async function bmailPage() {
         ...(inviteAt ? [card(h("p", { class: "ex-invite" },
             say(`${inviteAt} is an @name: a page at 333.eco where people find someone and thank them by name. You can hold your own.`,
                 `${inviteAt} គឺជា @name៖ ទំព័រមួយនៅ 333.eco ដែលមនុស្សស្វែងរកនរណាម្នាក់ ហើយអរគុណគេតាមឈ្មោះ។ អ្នកក៏អាចកាន់ឈ្មោះផ្ទាល់ខ្លួនបានដែរ។`),
-            " ", link(INVITE_HREF, say("See 333.eco", "មើល 333.eco"))))] : []));
+            " ", link(INVITE_HREF, say("See 333.eco", "មើល 333.eco"))))] : []),
+        // Stated once, like the line above it (P-BM3): anyone can sign a mail of their own, with their own passkey.
+        ...(maySign(text, !!entry, !!gone) ? [card(h("p", { class: "ex-invite" },
+            say("This mail was signed with a passkey. You can sign yours the same way.", "សំបុត្រនេះបានចុះហត្ថលេខាដោយ passkey។ អ្នកអាចចុះហត្ថលេខាលើសំបុត្ររបស់អ្នកតាមរបៀបដូចគ្នា។"),
+            " ", link(SIGN_HREF, say("Sign your own mail", "ចុះហត្ថលេខាលើសំបុត្ររបស់អ្នក"))))] : []));
 }
 async function originPage() {
     const title = head(say("Records", "កំណត់ត្រា"), say("A public log of what people chose to sign. It only ever grows, and every entry below was checked in your browser just now.", "កំណត់ហេតុសាធារណៈនៃអ្វីដែលមនុស្សបានជ្រើសរើសចុះហត្ថលេខា។ វាគ្រាន់តែកើនឡើង ហើយកំណត់ត្រានីមួយៗខាងក្រោមត្រូវបានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នកមុននេះបន្តិច។"));

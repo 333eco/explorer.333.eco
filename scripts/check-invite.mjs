@@ -22,7 +22,21 @@ const CASES = [
 ];
 const run = (m) => CASES.filter(([, args, want]) => m.invitationFor(...args) !== want).map(([why]) => why);
 
+// The second line, "Sign your own mail" (P-BM3): beside a found, unwithdrawn B-Mail, with or without an @name.
+const SIGN = [
+    ["a found record invites its reader to sign their own", [MAIL, true, false], true],
+    ["…with no @name too: signing a mail needs none", [MAIL.replace("name: @sokha.keo\n", ""), true, false], true],
+    ["no record: nothing beside a failed check", [MAIL, false, false], false],
+    ["withdrawn by its signer: nothing", [MAIL, true, true], false],
+    ["not a B-Mail at all", ["hello\n\nname: @x\n", true, false], false],
+];
 let code = 0;
+for (const [why, args, want] of SIGN) { const ok = real.maySign(...args) === want; console.log(`${ok ? "ok  " : "FAIL"} sign line: ${why}`); if (!ok) code = 1; }
+const sh = new URL(real.SIGN_HREF);
+const okSign = sh.origin === "https://sign.333.eco" && sh.pathname === "/b-mail" && sh.searchParams.get("from") === "b-mail" && [...sh.searchParams.keys()].length === 1;
+console.log(`${okSign ? "ok  " : "FAIL"} the sign link marks the channel and nothing else`); if (!okSign) code = 1;
+const lax = SIGN.filter(([, args, want]) => (args[0].startsWith("b-mail/v1")) !== want).length;
+console.log(`${lax >= 2 ? "ok  " : "FAIL"} control: a version that only asks "is it a B-Mail" fails ${lax} of ${SIGN.length} cases`); if (lax < 2) code = 1;
 const bad = run(real);
 for (const [why] of CASES) console.log(`${bad.includes(why) ? "FAIL" : "ok  "} ${why}`);
 if (bad.length) code = 1;
