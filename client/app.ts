@@ -250,6 +250,9 @@ async function bmailPage() {
     // The invitation, stated once, on this page and never in the mail (§b-mail-viral-loop; invite.ts says when it may show).
     const inviteAt = invitationFor(text, !!entry, !!gone);
     view.replaceChildren(title, card(...rows), card(h("dl", { class: "ex-kv" }, ...kv), h("pre", { class: "ex-mail" }, body)),
+        // The checker is whatever page a mail links to, so the page says where it is (founder 2026-11-14, after a counterexample pass).
+        h("p", { class: "fine" }, say("This check runs in your browser at explorer.333.eco. A page at any other address, however alike it looks, is not this check. It shows that a passkey signed these words, never that a person did.",
+            "ការពិនិត្យនេះដំណើរការក្នុងកម្មវិធីរុករករបស់អ្នកនៅ explorer.333.eco។ ទំព័រនៅអាសយដ្ឋានផ្សេង ទោះមើលទៅដូចគ្នាយ៉ាងណាក៏ដោយ មិនមែនជាការពិនិត្យនេះទេ។ វាបង្ហាញថា passkey មួយបានចុះហត្ថលេខាលើពាក្យទាំងនេះ មិនមែនថាមនុស្សម្នាក់បានធ្វើទេ។")),
         h("p", { class: "fine" }, say("A link copied into another mail still shows this message, so what you see here is what was signed.", "តំណដែលបានចម្លងទៅក្នុងសំបុត្រផ្សេងទៀតនៅតែបង្ហាញសារនេះ ដូច្នេះអ្វីដែលអ្នកឃើញនៅទីនេះគឺជាអ្វីដែលបានចុះហត្ថលេខា។")),
         ...(inviteAt ? [card(h("p", { class: "ex-invite" },
             say(`${inviteAt} is an @name: a page at 333.eco where people find someone and thank them by name. You can hold your own.`,
