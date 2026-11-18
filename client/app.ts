@@ -197,6 +197,10 @@ function searchBox(l: Log) {
         }
         found = null; searchNote = say("Type a record number, or a fingerprint of 64 characters.", "វាយលេខកំណត់ត្រា ឬស្នាមម្រាមដៃ 64 តួអក្សរ។"); paint();
     };
+    // ⭐ A652 (2026-11-17): a page that holds a file's fingerprint (origin.333.eco's gift page, "Check its record") links here as
+    //   /origin#find=<64 hex>. Read once, in the FRAGMENT (never sent to a server), then cleared, and searched as if typed.
+    const pre = /^#find=([0-9a-f]{64})$/.exec(location.hash);
+    if (pre) { history.replaceState(history.state, "", location.pathname + location.search); input.value = pre[1]; queueMicrotask(() => go(new Event("submit"))); }
     return h("div", {}, h("form", { class: "ex-search", role: "search", onsubmit: go }, input, h("button", { class: "btn", type: "submit" }, say("Find", "រក"))),
         h("label", { class: "ex-file" }, say("or choose a file", "ឬជ្រើសរើសឯកសារ"), h("input", { type: "file", multiple: true, onchange: (e: Event) => { const fs = [...((e.target as HTMLInputElement).files ?? [])]; if (fs.length) void searchFile(fs, l); } })),
         h("p", { class: "fine" }, say("For a B-Mail, choose both attachments: B-Mail.txt and B-Mail-proof.json.", "សម្រាប់ B-Mail សូមជ្រើសរើសឯកសារភ្ជាប់ទាំងពីរ៖ B-Mail.txt និង B-Mail-proof.json។")));
