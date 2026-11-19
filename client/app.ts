@@ -7,6 +7,7 @@ import { auditLog, checkCheckpoint, checkOts, checkpointBody, checkReveal, check
 import ledgerTrust from "./ledger-trust";
 import { matchWaiting, readWaiting as readWaitingFrom } from "./waiting";
 import { INVITE_HREF, SIGN_HREF, invitationFor, maySign } from "./invite";
+import { EMPTY, bundleEntries, decodeMemory, encodeMemory, extend, rootOf, type Edge, type Memory } from "./ledger-memory";
 // @ts-expect-error the same
 import { canvasDecoder, hashFile, phashDistance } from "@333eco/origin-verify/media";
 // @ts-expect-error the same
@@ -704,34 +705,79 @@ function derToRaw(der: Uint8Array) {
     if (der[0] !== 0x30) throw new Error("not ECDSA"); return join(part(), part());
 }
 interface PublicEntry { index: number; t: string; n?: number; start?: string; end?: string; rulesHash?: string; day?: string; hash?: string; at?: string }
-interface LedgerRead { ok: boolean; why?: string; size: number; body: string; entries: Uint8Array[]; pub: PublicEntry[]; placed: boolean; stamps: { tsa?: number[]; ots?: number[] } }
+interface LedgerRead { ok: boolean; why?: string; size: number; body: string; entries: Uint8Array[]; pub: PublicEntry[]; placed: boolean; stamps: { tsa?: number[]; ots?: number[] };
+    /** ⭐ A662: the first entry read on THIS visit (0 = all of them); before it, what this device checked on `before.at`. */
+    from: number; before: { size: number; at: string } | null;
+    /** ⛔ A662: the ledger doesn't extend what this device checked before (`at`): shown as a failure, never overwritten. */
+    rewritten?: { size: number; at: string } }
 let ledgerCache: LedgerRead | null = null;
-async function readLedger(): Promise<LedgerRead> {
-    if (ledgerCache) return ledgerCache;
-    const fail = (why: string): LedgerRead => ({ ok: false, why, size: 0, body: "", entries: [], pub: [], placed: false, stamps: {} });
+/** ⭐ A662 (2026-11-19; founder: "option 1"): what this device already checked, kept on this device only (ledger-memory.ts). */
+const MEMORY = "explorer.ledger.v1";
+const recall = (): Memory | null => { try { return decodeMemory(localStorage.getItem(MEMORY), ledgerTrust.origin); } catch { return null; } };
+const remember = (m: Memory) => { try { localStorage.setItem(MEMORY, encodeMemory(ledgerTrust.origin, m)); } catch { /* the next visit checks every entry */ } };
+const forget = () => { try { localStorage.removeItem(MEMORY); } catch { /* nothing kept */ } };
+declare const LEDGER_WORKER: string;
+/** Every new entry's leaf hash and the edge extended by them, in the background worker if it starts, else here: the same two functions. */
+function hashIn(entries: Uint8Array[], edge: Edge): Promise<{ leaves: Uint8Array[]; edge: Edge }> {
+    const here = () => { const leaves: Uint8Array[] = entries.map(hashLeaf); return { leaves, edge: extend(edge, leaves) }; };
+    const url = typeof LEDGER_WORKER === "string" ? LEDGER_WORKER : "";
+    if (!url || typeof Worker === "undefined") return Promise.resolve(here());
+    return new Promise((ok) => {
+        let w: Worker; try { w = new Worker(url); } catch { return ok(here()); }
+        const done = (v: { leaves: Uint8Array[]; edge: Edge }) => { w.terminate(); ok(v); };
+        w.onmessage = (e) => done(e.data); w.onerror = (e) => { e.preventDefault(); done(here()); };
+        w.postMessage({ entries, edge });
+    });
+}
+async function readLedger(o: { full?: boolean } = {}): Promise<LedgerRead> {
+    if (ledgerCache && !o.full) return ledgerCache;
+    const fail = (why: string, more: Partial<LedgerRead> = {}): LedgerRead => ({ ok: false, why, size: 0, body: "", entries: [], pub: [], placed: false, stamps: {}, from: 0, before: null, ...more });
     try {
         const note = await ledgerGet("checkpoint");
         if (!note) return fail(say("No checkpoint has been published yet.", "មិនទាន់មាន checkpoint បោះពុម្ពនៅឡើយទេ។"));
         const cp = await checkCheckpoint(text(note), ledgerTrust);
         if (!cp.ok) return fail(cp.why);
-        const get = prefetching(ledgerGet, [...tilesOf(cp.size, "entries", "0"), "stamps/index.json"]);
-        const entries: Uint8Array[] = await readEntries(get, cp.size), leaves: Uint8Array[] = entries.map(hashLeaf);
-        if (!same(treeRoot(leaves), cp.root)) return fail(say("The entries do not produce the checkpoint's root.", "ធាតុទាំងនេះមិនបង្កើតឫសរបស់ checkpoint ទេ។"));
-        for (let t = 0; t * 256 < cp.size; t++) {
-            const width = t * 256 + 256 <= cp.size ? undefined : cp.size % 256, tile = await get(hashTile(t, width));
-            if (!tile || !same(tile, join(...leaves.slice(t * 256, t * 256 + (width ?? 256))))) return fail(say(`Hash tile ${t} does not match the entries.`, `ក្រឡាហាស ${t} មិនត្រូវនឹងធាតុទេ។`));
+        const mem = o.full ? null : recall();
+        // ⛔ A ledger SMALLER than this device checked has dropped entries: the same alarm as a rewrite (below), never a fresh start.
+        if (mem && mem.edge.size > cp.size) return fail(say("The ledger is shorter than when this device checked it", "បញ្ជីខ្លីជាងពេលដែលឧបករណ៍នេះបានពិនិត្យវា"), { rewritten: { size: mem.edge.size, at: mem.at } });
+        const from = mem?.edge.size ?? 0, tiles = (kind: string) => tilesOf(cp.size, kind).slice(from / 256);
+        const get = prefetching(ledgerGet, [...tiles("entries"), ...tiles("0"), "stamps/index.json"]);
+        const entries: Uint8Array[] = [];
+        for (let t = from / 256; t * 256 < cp.size; t++) {
+            const width = t * 256 + 256 <= cp.size ? undefined : cp.size % 256, b = await get(tileAt("entries", t, width));
+            if (!b) return fail(say(`Entry tile ${t} can't be read.`, `មិនអាចអានក្រឡាធាតុ ${t} បានទេ។`));
+            const es = bundleEntries(b);
+            if (es.length !== (width ?? 256)) return fail(say(`Entry tile ${t} has the wrong length.`, `ក្រឡាធាតុ ${t} មានប្រវែងខុស។`));
+            entries.push(...es);
         }
-        const pub: PublicEntry[] = [];
-        for (const [index, e] of entries.entries()) {
+        const { leaves, edge } = await hashIn(entries, mem?.edge ?? EMPTY);
+        if (!same(rootOf(edge), cp.root)) {
+            if (!mem) return fail(say("The entries do not produce the checkpoint's root.", "ធាតុទាំងនេះមិនបង្កើតឫសរបស់ checkpoint ទេ។"));
+            // ⛔ What this device remembers no longer leads to the signed root. Check every entry from the start: if THAT passes, the ledger's
+            //   history differs from what was checked here on mem.at (or this device's memory was damaged). Either way it is said, never hidden.
+            const whole = await readLedger({ full: true });
+            return whole.ok ? fail(say("The ledger doesn't extend what this device checked before", "បញ្ជីមិនបន្តពីអ្វីដែលឧបករណ៍នេះបានពិនិត្យពីមុនទេ"), { rewritten: { size: mem.edge.size, at: mem.at } }) : whole;
+        }
+        for (let t = from / 256; t * 256 < cp.size; t++) {
+            const width = t * 256 + 256 <= cp.size ? undefined : cp.size % 256, tile = await get(hashTile(t, width));
+            if (!tile || !same(tile, join(...leaves.slice(t * 256 - from, t * 256 - from + (width ?? 256))))) return fail(say(`Hash tile ${t} does not match the entries.`, `ក្រឡាហាស ${t} មិនត្រូវនឹងធាតុទេ។`));
+        }
+        const pub: PublicEntry[] = [...((mem?.pub ?? []) as PublicEntry[])];
+        for (const [i, e] of entries.entries()) {
             if (e.length === 32) continue;
-            const nul = e.indexOf(0), tag = text(e.subarray(0, nul)), m = /^ledger\/(season|jubilee|reads|proof)\/v1$/.exec(tag); // `proof`: a window of the zero-sum proof (ledger design/signed-proof.md), taught here before the first one exists
+            const index = from + i, nul = e.indexOf(0), tag = text(e.subarray(0, nul)), m = /^ledger\/(season|jubilee|reads|proof)\/v1$/.exec(tag); // `proof`: a window of the zero-sum proof (ledger design/signed-proof.md), taught here before the first one exists
             if (nul < 0 || !m) return fail(say(`Entry ${index} is neither a sealed fingerprint nor a public entry.`, `ធាតុ ${index} មិនមែនជាស្នាមម្រាមដៃបិទត្រា ឬធាតុសាធារណៈទេ។`));
             pub.push({ index, ...JSON.parse(text(e.subarray(nul + 1))) });
         }
         const at = new Set(pub.map((x) => x.index)), placed = pub.every((x) => x.index === 0 || at.has(x.index + 1) || (x.index + 1) % 256 === 0);
         const idx = await get("stamps/index.json");
-        ledgerCache = { ok: true, size: cp.size, body: cp.body, entries, pub, placed, stamps: idx ? JSON.parse(text(idx)) : {} };
-        return ledgerCache;
+        // Remember the edge at the last WHOLE tile (a partial one changes), with the public entries before it, for this device's next visit.
+        const keep = Math.floor(cp.size / 256) * 256;
+        // ⛔ Only an ordinary visit remembers: a full read (a rewrite's check, an old receipt) never replaces what this device remembers.
+        if (keep > 0 && !o.full) remember({ edge: extend(mem?.edge ?? EMPTY, leaves.slice(0, keep - from)), pub: pub.filter((x) => x.index < keep), at: new Date().toISOString() });
+        const read: LedgerRead = { ok: true, size: cp.size, body: cp.body, entries, pub, placed, stamps: idx ? JSON.parse(text(idx)) : {}, from, before: mem ? { size: mem.edge.size, at: mem.at } : null };
+        if (!o.full) ledgerCache = read;
+        return read;
     } catch (e) { return fail((e as Error).message); }
 }
 async function checkReceipt(raw: string, l: LedgerRead): Promise<Node> {
@@ -745,7 +791,10 @@ async function checkReceipt(raw: string, l: LedgerRead): Promise<Node> {
         const key = await crypto.subtle.importKey("spki", unb64(ledgerTrust.receiptKey), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
         signed = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, derToRaw(unb64(r.sig)), join(enc("ledger/receipt/v1\0"), enc(r.origin), new Uint8Array([0]), idx, seal, enc(r.at)));
     } catch { signed = false; }
-    const inTree = r.index < l.size ? same(l.entries[r.index], seal) : null;
+    // ⭐ A662: an entry from before this visit's first one was checked on an earlier visit; to compare this receipt with it, read them all.
+    const all = r.index < l.from ? await readLedger({ full: true }) : l;
+    if (!all.ok) return leg(false, say("The ledger can't be read to compare this receipt", "មិនអាចអានបញ្ជីដើម្បីប្រៀបធៀបបង្កាន់ដៃនេះបានទេ"), all.why ?? "");
+    const inTree = r.index < all.size ? same(all.entries[r.index - all.from], seal) : null;
     return h("div", {}, leg(signed, signed ? say("The ledger signed this receipt", "បញ្ជីបានចុះហត្ថលេខាលើបង្កាន់ដៃនេះ") : say("This signature does not verify", "ហត្ថលេខានេះមិនត្រឹមត្រូវទេ"), say("Checked here against the ledger's published receipt key.", "បានពិនិត្យនៅទីនេះធៀបនឹងសោបង្កាន់ដៃដែលបានបោះពុម្ពរបស់បញ្ជី។")),
         inTree === null ? leg(null, say("Not in a published checkpoint yet", "មិនទាន់នៅក្នុង checkpoint ដែលបានបោះពុម្ពទេ"), say("The ledger closes once a day. The next close publishes it.", "បញ្ជីបិទម្តងក្នុងមួយថ្ងៃ។ ការបិទបន្ទាប់នឹងបោះពុម្ពវា។"))
             : leg(inTree, inTree ? say("It is in the ledger", "វានៅក្នុងបញ្ជី") : say("It is NOT at that place in the ledger", "វាមិននៅកន្លែងនោះក្នុងបញ្ជីទេ"), say(`Entry ${n(r.index)} was compared with this fingerprint, and the root above was rebuilt from every entry.`, `ធាតុ ${n(r.index)} ត្រូវបានប្រៀបធៀបនឹងស្នាមម្រាមដៃនេះ ហើយឫសខាងលើត្រូវបានសាងសង់ឡើងវិញពីធាតុទាំងអស់។`)));
@@ -779,14 +828,22 @@ async function ledgerPage() {
     view.replaceChildren(title, card(h("p", { role: "status" }, say("Reading and checking the ledger…", "កំពុងអាន និងពិនិត្យបញ្ជី…"))));
     const l = await readLedger();
     if (route().name !== "ledger") return;
+    // ⭐ A662: "check every entry again" — this device forgets what it checked, and the next read checks every entry from the start.
+    const again = (label: string) => h("button", { type: "button", class: "btn ghost small", onclick: () => { forget(); ledgerCache = null; void ledgerPage(); } }, label);
+    if (l.rewritten) return view.replaceChildren(title, card(leg(false, l.why ?? "",
+        say(`This device checked the ledger on ${when(l.rewritten.at)}, at ${count(l.rewritten.size, "entry", "entries")}. The ledger signed now does not grow from that one: either its history changed, or this device's memory of it was damaged. Nothing from it is shown.`,
+            `ឧបករណ៍នេះបានពិនិត្យបញ្ជីនៅ ${when(l.rewritten.at)} នៅធាតុ ${n(l.rewritten.size)}។ បញ្ជីដែលបានចុះហត្ថលេខាឥឡូវនេះមិនបន្តពីនោះទេ៖ ប្រវត្តិរបស់វាបានផ្លាស់ប្តូរ ឬការចងចាំរបស់ឧបករណ៍នេះត្រូវបានខូច។ គ្មានអ្វីពីវាត្រូវបានបង្ហាញទេ។`)),
+        again(say("Forget it and check every entry again", "បំភ្លេចវា ហើយពិនិត្យធាតុទាំងអស់ម្តងទៀត"))));
     if (!l.ok) return view.replaceChildren(title, card(leg(false, say("The ledger didn't pass its check", "បញ្ជីមិនបានឆ្លងការពិនិត្យទេ"), say("Or it can't be read right now, so nothing from it is shown. ", "ឬមិនអាចអានបានឥឡូវនេះ ដូច្នេះគ្មានអ្វីពីវាត្រូវបានបង្ហាញទេ។ "), l.why ?? "")));
     const ended = new Map(l.pub.filter((e) => e.t === "jubilee").map((e) => [e.n!, e.at!]));
     const stampsBox = h("div", {}, h("p", { role: "status" }, say("Checking the outside clocks…", "កំពុងពិនិត្យនាឡិកាខាងក្រៅ…")));
     const ta = h("textarea", { rows: "4", class: "ex-receipt", "aria-label": say("A receipt", "បង្កាន់ដៃ"), placeholder: '{"index": …, "seal": "…", "at": "…", "origin": "log.333.eco/ledger", "sig": "…"}' }) as HTMLTextAreaElement, out = h("div", { role: "status" });
     const lastReads = l.pub.filter((e) => e.t === "reads").slice(-1)[0];
     view.replaceChildren(title,
-        card(leg(true, say("Its signature, its tree and every entry, checked", "ហត្ថលេខា ដើមឈើ និងធាតុទាំងអស់របស់វា បានពិនិត្យ"), say(`Signed with the ledger's published key, and its root rebuilt here from all ${count(l.size, "entry", "entries")}. Each entry is a sealed 32-byte fingerprint, or one of the few public entries below. The size is padded every day, so it says only that the ledger ran.`, `ចុះហត្ថលេខាដោយសោដែលបានបោះពុម្ពរបស់បញ្ជី ហើយឫសរបស់វាត្រូវបានសាងសង់ឡើងវិញនៅទីនេះពីធាតុទាំង ${n(l.size)}។ ធាតុនីមួយៗជាស្នាមម្រាមដៃ 32 បៃដែលបានបិទត្រា ឬជាធាតុសាធារណៈមួយក្នុងចំណោមធាតុខាងក្រោម។ ទំហំត្រូវបានបំពេញរៀងរាល់ថ្ងៃ ដូច្នេះវាប្រាប់តែថាបញ្ជីបានដំណើរការ។`)),
-            leg(l.placed, l.placed ? say("Public entries close their day", "ធាតុសាធារណៈបិទថ្ងៃរបស់វា") : say("A public entry is out of place", "ធាតុសាធារណៈមួយនៅខុសកន្លែង"), say("Each sits at the end of its day's entries, so where it falls says nothing about how many thanks came before it.", "ធាតុនីមួយៗនៅចុងធាតុនៃថ្ងៃរបស់វា ដូច្នេះទីតាំងរបស់វាមិនប្រាប់ពីចំនួនការអរគុណមុនវាទេ។"))),
+        card(leg(true, say("Its signature, its tree and every entry, checked", "ហត្ថលេខា ដើមឈើ និងធាតុទាំងអស់របស់វា បានពិនិត្យ"), l.before && l.size === l.from ? say(`Signed with the ledger's published key. Nothing was added since this device last checked it (${when(l.before.at)}), and the root this device rebuilt then is the one signed now, so none of its ${count(l.from, "entry", "entries")} has changed. Each entry is a sealed 32-byte fingerprint, or one of the few public entries below. The size is padded every day, so it says only that the ledger ran.`, `ចុះហត្ថលេខាដោយសោដែលបានបោះពុម្ពរបស់បញ្ជី។ គ្មានអ្វីត្រូវបានបន្ថែមទេ ចាប់តាំងពីឧបករណ៍នេះបានពិនិត្យវាចុងក្រោយ (${when(l.before.at)}) ហើយឫសដែលឧបករណ៍នេះបានសាងសង់ឡើងវិញនៅពេលនោះ គឺជាឫសដែលបានចុះហត្ថលេខាឥឡូវនេះ ដូច្នេះគ្មានធាតុណាមួយក្នុងចំណោមធាតុ ${n(l.from)} របស់វាបានផ្លាស់ប្តូរទេ។ ធាតុនីមួយៗជាស្នាមម្រាមដៃ 32 បៃដែលបានបិទត្រា ឬជាធាតុសាធារណៈមួយក្នុងចំណោមធាតុខាងក្រោម។ ទំហំត្រូវបានបំពេញរៀងរាល់ថ្ងៃ ដូច្នេះវាប្រាប់តែថាបញ្ជីបានដំណើរការ។`)
+            : l.before ? say(`Signed with the ledger's published key. Its root was rebuilt here from the ${count(l.size - l.from, "entry", "entries")} added since this device last checked it (${when(l.before.at)}), on top of the ${n(l.from)} it checked then, so none of those has changed. Each entry is a sealed 32-byte fingerprint, or one of the few public entries below. The size is padded every day, so it says only that the ledger ran.`, `ចុះហត្ថលេខាដោយសោដែលបានបោះពុម្ពរបស់បញ្ជី។ ឫសរបស់វាត្រូវបានសាងសង់ឡើងវិញនៅទីនេះពីធាតុ ${n(l.size - l.from)} ដែលបានបន្ថែមចាប់តាំងពីឧបករណ៍នេះបានពិនិត្យវាចុងក្រោយ (${when(l.before.at)}) បន្ថែមលើធាតុ ${n(l.from)} ដែលវាបានពិនិត្យនៅពេលនោះ ដូច្នេះគ្មានធាតុណាមួយក្នុងចំណោមនោះបានផ្លាស់ប្តូរទេ។ ធាតុនីមួយៗជាស្នាមម្រាមដៃ 32 បៃដែលបានបិទត្រា ឬជាធាតុសាធារណៈមួយក្នុងចំណោមធាតុខាងក្រោម។ ទំហំត្រូវបានបំពេញរៀងរាល់ថ្ងៃ ដូច្នេះវាប្រាប់តែថាបញ្ជីបានដំណើរការ។`) : say(`Signed with the ledger's published key, and its root rebuilt here from all ${count(l.size, "entry", "entries")}. Each entry is a sealed 32-byte fingerprint, or one of the few public entries below. The size is padded every day, so it says only that the ledger ran.`, `ចុះហត្ថលេខាដោយសោដែលបានបោះពុម្ពរបស់បញ្ជី ហើយឫសរបស់វាត្រូវបានសាងសង់ឡើងវិញនៅទីនេះពីធាតុទាំង ${n(l.size)}។ ធាតុនីមួយៗជាស្នាមម្រាមដៃ 32 បៃដែលបានបិទត្រា ឬជាធាតុសាធារណៈមួយក្នុងចំណោមធាតុខាងក្រោម។ ទំហំត្រូវបានបំពេញរៀងរាល់ថ្ងៃ ដូច្នេះវាប្រាប់តែថាបញ្ជីបានដំណើរការ។`)),
+            leg(l.placed, l.placed ? say("Public entries close their day", "ធាតុសាធារណៈបិទថ្ងៃរបស់វា") : say("A public entry is out of place", "ធាតុសាធារណៈមួយនៅខុសកន្លែង"), say("Each sits at the end of its day's entries, so where it falls says nothing about how many thanks came before it.", "ធាតុនីមួយៗនៅចុងធាតុនៃថ្ងៃរបស់វា ដូច្នេះទីតាំងរបស់វាមិនប្រាប់ពីចំនួនការអរគុណមុនវាទេ។")),
+            l.before ? again(say("Check every entry again", "ពិនិត្យធាតុទាំងអស់ម្តងទៀត")) : null),
         card(h("h2", {}, say("Seasons", "រដូវ")), ...l.pub.filter((e) => e.t === "season").map((e) => h("div", { class: "ex-leg" },
             h("b", {}, say(`Season ${e.n}`, `រដូវ ${e.n}`)), h("p", {}, say(`Opens ${when(e.start!)} · ends ${when(e.end!)}`, `បើក ${when(e.start!)} · បញ្ចប់ ${when(e.end!)}`)),
             h("p", {}, say("Its rule was committed here before anyone thanked under it. The rule's fingerprint:", "ច្បាប់របស់វាត្រូវបានប្តេជ្ញានៅទីនេះ មុនពេលនរណាម្នាក់អរគុណក្រោមវា។ ស្នាមម្រាមដៃរបស់ច្បាប់៖")), h("p", { class: "ex-mono" }, e.rulesHash!),

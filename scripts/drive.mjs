@@ -135,7 +135,22 @@ try {
         must(await ev(`(()=>{const t=document.querySelector('.ex-receipt'),c=t.closest('.card');const p=parseFloat(getComputedStyle(c).paddingLeft)+parseFloat(getComputedStyle(c).paddingRight);return Math.abs(t.getBoundingClientRect().width-(c.clientWidth-p))<=2})()`), "ledger: the receipt box fills its card's width");
         await shot("20-ledger"); await noSideways("ledger");
         await dark(true); await shot("20-ledger-dark"); await dark(false);
+        // ⭐ A662 (2026-11-19): this device remembers the tree's right edge, so a return visit reads only what is new and still proves the rest.
+        const mem = await ev(`JSON.parse(localStorage.getItem('explorer.ledger.v1')||'null')`);
+        const lsize = Number(/^\S+\n(\d+)/.exec(await (await fetch("https://log.333.eco/ledger/checkpoint")).text())?.[1]);
+        must(mem && mem.origin === "log.333.eco/ledger" && mem.size === Math.floor(lsize / 256) * 256 && mem.hashes.length >= 1, `ledger: this device remembers the edge at ${mem?.size} (the last whole tile of ${lsize})`);
+        await go("/ledger"); await until(`/since this device last checked it|doesn.t extend|didn.t pass/.test(document.querySelector('main').innerText)`, "the ledger, a return visit");
+        const tilesRead = await ev(`performance.getEntriesByType('resource').filter((r) => r.name.includes('/ledger/tile/entries/')).length`);
+        must(/since this device last checked it/.test(await body()) && tilesRead === Math.ceil(lsize / 256) - mem.size / 256, `ledger: a return visit reads only the new entry tiles (${tilesRead}) and says what this device checked before`);
+        // CONTROL: a remembered edge from ANOTHER history (one byte changed) must fail the page out loud, say why, and show nothing from it.
+        await ev(`(()=>{const m=JSON.parse(localStorage.getItem('explorer.ledger.v1'));const b=[...atob(m.hashes[0])].map((c)=>c.charCodeAt(0));b[0]^=1;m.hashes[0]=btoa(String.fromCharCode(...b));localStorage.setItem('explorer.ledger.v1',JSON.stringify(m));})()`);
+        await go("/ledger"); await until(`/doesn.t extend|didn.t pass|since this device/.test(document.querySelector('main').innerText)`, "the ledger, a changed memory");
+        must(/doesn.t extend what this device checked before/.test(await body()) && !/Season 1/.test(await body()), "ledger CONTROL: an edge from another history fails the page, says why, and shows nothing from it");
+        await ev(`[...document.querySelectorAll('main button')].find((b) => /check every entry again/i.test(b.textContent)).click()`);
+        await until(`/root rebuilt here from all/.test(document.querySelector('main').innerText)`, "every entry checked again");
+        must(/Season 1/.test(await body()), "ledger: its button forgets the memory and checks every entry again");
         await size(1440, 900, false); await go("/ledger"); await until(`/Its signature/.test(document.querySelector('main').innerText)`, "the ledger on a desktop"); await shot("21-ledger-desktop"); await size(390, 844, true);
+        await ev("localStorage.removeItem('explorer.ledger.v1')");   // A662: the tamper control tests a FIRST visit (a return visit never reads that tile)
         await cdp("Fetch.enable", { patterns: [{ urlPattern: "*log.333.eco/ledger*" }] }); tamperLedger = true;
         await go("/ledger"); await until(`/didn.t pass its check|signature, its tree/.test(document.querySelector('main').innerText)`, "the tampered ledger");
         must(/didn.t pass its check/.test(await body()) && !/Season 1/.test(await body()), "ledger CONTROL: one changed byte in an entry fails the page, and nothing from it is shown");
