@@ -52,6 +52,20 @@ const SOURCES: Record<string, [string, string]> = {
 };
 const label = (s: string) => (SOURCES[s] ? SOURCES[s][isKm() ? 1 : 0] : s);
 const logGet = async (p: string) => { const r = await fetch(LOG + p); if (r.status === 404) return null; if (!r.ok) throw new Error(String(r.status)); return new Uint8Array(await r.arrayBuffer()); };
+/** A log's tile at one size (C2SP tlog-tiles): `kind` "entries" or "0" (the hash tiles), 256 a tile, the last one partial. */
+const tileAt = (kind: string, t: number, width?: number) => { let s = "", v = t, first = true; do { const part = String(v % 1000).padStart(3, "0"); s = (first ? part : `x${part}/`) + s; first = false; v = Math.floor(v / 1000); } while (v > 0); return `tile/${kind}/${s}${width ? `.p/${width}` : ""}`; };
+const tilesOf = (size: number, ...kinds: string[]) => kinds.flatMap((k) => { const out: string[] = []; for (let t = 0; t * 256 < size; t++) out.push(tileAt(k, t, t * 256 + 256 <= size ? undefined : size % 256)); return out; });
+/** Every file one read of a log needs, asked for AT ONCE, at most `inFlight` at a time (A645 perf-1/2/5/9, 2026-11-19: the checks below read
+ *  them one after another, 26 round trips in a row for the ledger, so its page waited 4.4 s). Each is fetched once and kept for this read.
+ *  ⭐ No check depends on this list: a path a check asks for that is not on it is simply fetched, so a wrong list costs speed, never a check.
+ *  That is why the origin log's size may be read here from its checkpoint BEFORE the checkpoint is verified (auditLog verifies it). */
+function prefetching(get: (p: string) => Promise<Uint8Array | null>, paths: string[], inFlight = 24) {
+    const memo = new Map<string, Promise<Uint8Array | null>>(), queue = [...new Set(paths)]; let running = 0;
+    const start = (p: string) => { running++; const r = get(p); memo.set(p, r); r.catch(() => {}).finally(() => { running--; pump(); }); return r; };
+    const pump = () => { while (running < inFlight && queue.length) { const p = queue.shift()!; if (!memo.has(p)) start(p); } };
+    pump();
+    return (p: string) => memo.get(p) ?? start(p);
+}
 const text = (b: Uint8Array) => new TextDecoder().decode(b);
 const head = (title: string, lede?: string) => h("div", {}, h("h1", {}, title), lede ? h("p", { class: "lede" }, lede) : null);
 const card = (...kids: Kid[]) => h("div", { class: "card" }, ...kids);
@@ -146,10 +160,11 @@ async function readLog(): Promise<Log> {
     try {
         const note = await logGet("checkpoint");
         if (!note) throw new Error("no checkpoint");
-        const audit = await auditLog(logGet, text(note), trust);
+        const get = prefetching(logGet, [...tilesOf(Number(text(note).split("\n")[1]), "entries", "0"), "stamps/index.json"]);
+        const audit = await auditLog(get, text(note), trust);
         if (!audit.ok) out = { ok: false, why: audit.why, size: 0, entries: [], stamps: {} };
         else {
-            const raw: Uint8Array[] = await readEntries(logGet, audit.size), idx = await logGet("stamps/index.json");
+            const raw: Uint8Array[] = await readEntries(get, audit.size), idx = await get("stamps/index.json");
             out = { ok: true, size: audit.size, entries: raw.map((e) => JSON.parse(text(e))), stamps: idx ? JSON.parse(text(idx)) : {} };
         }
     } catch (e) { out = { ok: false, why: (e as Error).message, size: 0, entries: [], stamps: {} }; }
@@ -699,10 +714,11 @@ async function readLedger(): Promise<LedgerRead> {
         if (!note) return fail(say("No checkpoint has been published yet.", "មិនទាន់មាន checkpoint បោះពុម្ពនៅឡើយទេ។"));
         const cp = await checkCheckpoint(text(note), ledgerTrust);
         if (!cp.ok) return fail(cp.why);
-        const entries: Uint8Array[] = await readEntries(ledgerGet, cp.size), leaves: Uint8Array[] = entries.map(hashLeaf);
+        const get = prefetching(ledgerGet, [...tilesOf(cp.size, "entries", "0"), "stamps/index.json"]);
+        const entries: Uint8Array[] = await readEntries(get, cp.size), leaves: Uint8Array[] = entries.map(hashLeaf);
         if (!same(treeRoot(leaves), cp.root)) return fail(say("The entries do not produce the checkpoint's root.", "ធាតុទាំងនេះមិនបង្កើតឫសរបស់ checkpoint ទេ។"));
         for (let t = 0; t * 256 < cp.size; t++) {
-            const width = t * 256 + 256 <= cp.size ? undefined : cp.size % 256, tile = await ledgerGet(hashTile(t, width));
+            const width = t * 256 + 256 <= cp.size ? undefined : cp.size % 256, tile = await get(hashTile(t, width));
             if (!tile || !same(tile, join(...leaves.slice(t * 256, t * 256 + (width ?? 256))))) return fail(say(`Hash tile ${t} does not match the entries.`, `ក្រឡាហាស ${t} មិនត្រូវនឹងធាតុទេ។`));
         }
         const pub: PublicEntry[] = [];
@@ -713,7 +729,7 @@ async function readLedger(): Promise<LedgerRead> {
             pub.push({ index, ...JSON.parse(text(e.subarray(nul + 1))) });
         }
         const at = new Set(pub.map((x) => x.index)), placed = pub.every((x) => x.index === 0 || at.has(x.index + 1) || (x.index + 1) % 256 === 0);
-        const idx = await ledgerGet("stamps/index.json");
+        const idx = await get("stamps/index.json");
         ledgerCache = { ok: true, size: cp.size, body: cp.body, entries, pub, placed, stamps: idx ? JSON.parse(text(idx)) : {} };
         return ledgerCache;
     } catch (e) { return fail((e as Error).message); }

@@ -23,3 +23,7 @@ a.ex-doc{display:block;text-decoration:none;color:inherit;margin-bottom:10px}a.e
 .ex-receipt { display: block; width: 100%; box-sizing: border-box; margin: .5rem 0; font: inherit; font-family: var(--mono, ui-monospace, monospace); font-size: .85em; }
 /* A B-Mail's signed body, as text (founder 2026-11-12). */
 .ex-mail{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0 0;font:inherit;line-height:1.55}
+/* A645 (2026-11-19): every page paints a short "Reading…" card, then its checked results. hb.css pins the footer to the bottom of a short
+   page, so the results pushed it down: a layout shift of 0.13 on every page. A screen's height for <main> keeps the footer below the fold
+   from the first paint, so nothing a reader can see moves. */
+main#view{min-height:100vh;min-height:100svh}
