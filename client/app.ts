@@ -721,7 +721,9 @@ declare const LEDGER_WORKER: string;
 function hashIn(entries: Uint8Array[], edge: Edge): Promise<{ leaves: Uint8Array[]; edge: Edge }> {
     const here = () => { const leaves: Uint8Array[] = entries.map(hashLeaf); return { leaves, edge: extend(edge, leaves) }; };
     const url = typeof LEDGER_WORKER === "string" ? LEDGER_WORKER : "";
-    if (!url || typeof Worker === "undefined") return Promise.resolve(here());
+    // A day's return visit adds 256 entries: hashing those here costs less than starting a worker (measured live: a return visit with
+    // nothing new still fetched and started it). The worker is for a first visit's whole ledger.
+    if (!url || entries.length < 512 || typeof Worker === "undefined") return Promise.resolve(here());
     return new Promise((ok) => {
         let w: Worker; try { w = new Worker(url); } catch { return ok(here()); }
         const done = (v: { leaves: Uint8Array[]; edge: Edge }) => { w.terminate(); ok(v); };
