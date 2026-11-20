@@ -1,4 +1,4 @@
-.ex-search{display:flex;gap:8px;align-items:stretch;margin:14px 0 6px}.ex-search input{flex:1;min-width:0;font:inherit;padding:10px 12px;border-radius:12px;border:1px solid var(--line-strong);background:var(--bg);color:var(--ink)}
+.ex-search{display:flex;gap:8px;align-items:stretch;margin:14px 0 6px}.ex-search input{flex:1;min-width:0;font:inherit;font-size:16px;padding:10px 12px;border-radius:12px;border:1px solid var(--line-strong);background:var(--bg);color:var(--ink)}
 .ex-search .btn{width:auto;margin:0;padding-inline:16px}
 .ex-file{display:inline-block;margin:2px 0 16px;font-size:14px;color:var(--accent);cursor:pointer;text-decoration:underline}.ex-file input{position:absolute;width:1px;height:1px;opacity:0}
 .ex-table{width:100%;border-collapse:collapse;font-size:14px}.ex-table th{text-align:left;font-weight:600;color:var(--ink-dim);padding:6px 8px 6px 0;border-bottom:1px solid var(--line-strong)}.ex-table td{padding:9px 8px 9px 0;border-bottom:1px solid var(--line);vertical-align:top}
@@ -20,7 +20,7 @@ a.ex-doc{display:block;text-decoration:none;color:inherit;margin-bottom:10px}a.e
 .ex-kinds{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 0}.ex-kinds .pill{font:inherit;font-size:13px;padding:6px 12px;background:none;cursor:pointer}.ex-kinds .pill.on{background:var(--wash)}
 .ex-raw{margin:8px 0 0;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}.ex-entry{margin-bottom:10px}.card details summary{cursor:pointer;font-weight:600}.card details{margin-top:12px}.ex-entry details{margin:0}
 /* The ledger page's receipt box: the whole width of its card (founder 2026-11-07). */
-.ex-receipt { display: block; width: 100%; box-sizing: border-box; margin: .5rem 0; font: inherit; font-family: var(--mono, ui-monospace, monospace); font-size: .85em; }
+.ex-receipt { display: block; width: 100%; box-sizing: border-box; margin: .5rem 0; font: inherit; font-family: var(--mono, ui-monospace, monospace); font-size: max(16px, .85em); }
 /* A B-Mail's signed body, as text (founder 2026-11-12). */
 .ex-mail{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0 0;font:inherit;line-height:1.55}
 /* A645 (2026-11-19): every page paints a short "Reading…" card, then its checked results. hb.css pins the footer to the bottom of a short
