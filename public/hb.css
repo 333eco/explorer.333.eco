@@ -5,88 +5,110 @@
 :root{
   --bg:#fcfbfe; --surface:#f4f1fb; --surface-2:#ebe7f5; --line:rgba(20,16,30,.12); --line-strong:rgba(20,16,30,.28);
   --ink:#16141c; --ink-dim:#5b5766; --ink-faint:#6e6a79;
-  --accent:#0f52ba; --accent-ink:#fff;
+  --accent:#0f52ba; --accent-ink:#fff; --danger:#b3261e;
   --wash:color-mix(in oklab,var(--accent) 9%,transparent); --edge:color-mix(in oklab,var(--accent) 30%,transparent);
   --font-text:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif; --font-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
   --font-khmer:"Noto Sans Khmer","Khmer Sangam MN",sans-serif; --r:16px; --r-pill:999px; color-scheme:light;
+  /* THE TYPE SCALE, every estate site (founder 2026-11-20): 12 footer + fine print · 14 secondary, labels, pills · 16 body, fields,
+     buttons · 20 section + card titles · 28 / 40 page titles below / at 1024 px (a step, never a fluid size). No size outside it. */
+  --fs-12:12px; --fs-14:14px; --fs-16:16px; --fs-20:20px; --fs-28:28px; --fs-40:40px; --fs-title:var(--fs-28);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){
   --bg:#0a0a0f; --surface:#17171d; --surface-2:#1f1f27; --line:rgba(255,255,255,.08); --line-strong:rgba(255,255,255,.18);
   --ink:#f5f5f7; --ink-dim:#9b9ba5; --ink-faint:#888893;
-  --accent:color-mix(in oklab,#0f52ba 55%,#fff); --accent-ink:#0a0a0f; color-scheme:dark;
+  --accent:color-mix(in oklab,#0f52ba 55%,#fff); --accent-ink:#0a0a0f; --danger:#ff8a80; color-scheme:dark;
 }}
 :root[data-theme=dark]{
   --bg:#0a0a0f; --surface:#17171d; --surface-2:#1f1f27; --line:rgba(255,255,255,.08); --line-strong:rgba(255,255,255,.18);
   --ink:#f5f5f7; --ink-dim:#9b9ba5; --ink-faint:#888893;
-  --accent:color-mix(in oklab,#0f52ba 55%,#fff); --accent-ink:#0a0a0f; color-scheme:dark;
+  --accent:color-mix(in oklab,#0f52ba 55%,#fff); --accent-ink:#0a0a0f; --danger:#ff8a80; color-scheme:dark;
 }
 /* The beat's two numbers, copied from brand.333.eco/css/tokens.css (motion.css does not define them; an html rule, not :root). */
 html{--beat-duration:1.5s;--beat-delay:0s}
 *{box-sizing:border-box}[hidden]{display:none!important}[data-theme-js] .seg[data-theme-ui][hidden]{display:inline-flex!important}
 html,body{margin:0;background:var(--bg)}
-body{color:var(--ink);font:15px/1.5 var(--font-text);-webkit-font-smoothing:antialiased}
+body{color:var(--ink);font:var(--fs-16)/1.5 var(--font-text);-webkit-font-smoothing:antialiased}
 html[lang=km] body{font-family:var(--font-khmer),var(--font-text);line-height:1.7}
 a{color:var(--accent)}
 .app{max-width:44rem;margin:0 auto;padding:0 20px 28px;min-height:100vh;display:flex;flex-direction:column}
 header{display:flex;align-items:center;justify-content:space-between;padding:18px 0 10px}
-.wordmark{font-weight:600;font-size:1.15rem;white-space:nowrap;letter-spacing:-.01em;
+.wordmark{font-weight:600;font-size:var(--fs-20);white-space:nowrap;letter-spacing:-.01em;
   --emblem-cap:.68em;--emblem-size:calc(var(--emblem-cap)*1.1);--emblem-box:calc(var(--emblem-size)/.7534)}
 .wordmark svg{width:var(--emblem-box);height:var(--emblem-box);color:var(--accent);vertical-align:baseline;
   margin-top:calc(var(--emblem-box)*-.09312);margin-bottom:calc(var(--emblem-box)*-.15333);
   margin-left:calc(var(--emblem-box)*-.15343 + 1px);margin-right:calc(var(--emblem-box)*-.09312 - 1px)}
 .wordmark sup{font-size:.55em;font-weight:500;vertical-align:.62em;margin-left:.06em;line-height:0}
-.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--r-pill);padding:2px;font-size:12px}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--r-pill);padding:2px;font-size:var(--fs-12)}
 .seg>span,.seg>a,.seg>button{padding:3px 10px;border-radius:var(--r-pill);color:var(--ink-dim);text-decoration:none;background:none;border:0;font:inherit;cursor:pointer}
 .seg .on,.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
 main{flex:1}
-h1{font-size:26px;line-height:1.2;margin:14px 0 6px;letter-spacing:-.015em}
-h2{font-size:15px;margin:18px 0 6px}
+h1{font-size:var(--fs-title);line-height:1.2;margin:14px 0 6px;letter-spacing:-.015em}
+h3{font-size:var(--fs-16)}/* a sub-heading: 16, bold — a bare h3 fell to the browser's 18.72 px, off the scale (developers /log-in, 2026-11-20) */
+h2{font-size:var(--fs-20);margin:18px 0 6px}
 .lede{color:var(--ink-dim);margin:0 0 18px}
 .card{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:16px;margin:0 0 12px}
-.card h2{font-size:14px;margin:0 0 6px}.card p{margin:0;color:var(--ink-dim);font-size:14px}
-.note{border-left:3px solid var(--accent);background:var(--wash);border-radius:0 12px 12px 0;padding:12px 14px;font-size:14px;margin:0 0 12px}
-.btn{display:block;width:100%;border:0;border-radius:14px;padding:15px;font:600 16px var(--font-text);text-align:center;text-decoration:none;
+.card h2{font-size:var(--fs-20);margin:0 0 6px}.card p{margin:0;color:var(--ink-dim);font-size:var(--fs-14)}
+.note{border-left:3px solid var(--accent);background:var(--wash);border-radius:0 12px 12px 0;padding:12px 14px;font-size:var(--fs-14);margin:0 0 12px}
+.btn{display:block;width:100%;border:0;border-radius:14px;padding:15px;font:600 var(--fs-16) var(--font-text);text-align:center;text-decoration:none;
   background:var(--accent);color:var(--accent-ink);margin:8px 0 0;cursor:pointer}
 html[lang=km] .btn{font-family:var(--font-khmer),var(--font-text)}
 .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line-strong)}
 .btn svg{vertical-align:-3px;margin-right:6px}
-label{display:block;font-size:13.5px;color:var(--ink-dim);margin-top:12px}
-.field{display:block;width:100%;border:1px solid var(--line-strong);border-radius:12px;padding:12px 14px;background:var(--bg);color:var(--ink);font:16px var(--font-text);margin-top:6px}
+label{display:block;font-size:var(--fs-14);color:var(--ink-dim);margin-top:12px}
+.field{display:block;width:100%;border:1px solid var(--line-strong);border-radius:12px;padding:12px 14px;background:var(--bg);color:var(--ink);font:var(--fs-16) var(--font-text);margin-top:6px}
 /* /build Default 19 §no-zoom-fields (founder 2026-11-19): every text field at least 16px, so an iPhone never zooms when one is tapped; a field with no size of its own gets 16px (zero specificity, so a larger component wins); a rule that sets a field's size sets 16px or more. */
-:where(input:not([type=checkbox],[type=radio],[type=range],[type=file]),textarea,select){font-size:16px}
+:where(input:not([type=checkbox],[type=radio],[type=range],[type=file]),textarea,select){font-size:var(--fs-16)}
 .field:focus-visible,.btn:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.otp{letter-spacing:.3em;font:20px var(--font-mono);text-align:center}
-.more{display:block;margin:2px 0 0;padding:12px 0;text-align:center;font-weight:600;font-size:14px}
-.fine{color:var(--ink-dim);font-size:12.5px;margin:10px 0 0}
+.otp{letter-spacing:.3em;font:var(--fs-20) var(--font-mono);text-align:center}
+.more{display:block;margin:2px 0 0;padding:12px 0;text-align:center;font-weight:600;font-size:var(--fs-14)}
+.fine{color:var(--ink-dim);font-size:var(--fs-14);margin:10px 0 0}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}.row:first-of-type{border-top:0}
-.row .t{font-size:14px;font-weight:600}.row .s{font-size:12.5px;color:var(--ink-dim)}
+.row .t{font-size:var(--fs-14);font-weight:600}.row .s{font-size:var(--fs-14);color:var(--ink-dim)}
 .list{margin:0 0 8px;padding:0;list-style:none}
-footer{border-top:1px solid var(--line);padding-top:14px;margin-top:24px;color:var(--ink-faint);font-size:11.5px;text-align:center}
+footer{border-top:1px solid var(--line);padding-top:14px;margin-top:24px;color:var(--ink-faint);font-size:var(--fs-12);text-align:center}
 footer p{margin:0 0 10px}
-.foot-row{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;color:var(--ink-dim);font-size:12.5px}
+.foot-row{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;color:var(--ink-dim);font-size:var(--fs-12)}
 .foot-row p{margin:0}.foot-row a{color:inherit}
 .sm{font-size:.6em;vertical-align:.6em;line-height:0;margin-left:.04em}
 /* For a shell whose language the page script picks (origin.333.eco): both languages are rendered, the html lang shows one. */
 html[lang=km] .l-en,html:not([lang=km]) .l-km{display:none!important}
-.btn.small{display:inline-block;width:auto;margin:0;padding:8px 12px;font-size:14px}
+.btn.small{display:inline-block;width:auto;margin:0;padding:8px 12px;font-size:var(--fs-14)}
 .acts{display:flex;gap:8px;flex:none}
-.tag{font-size:11.5px;color:var(--ink-dim);border:1px solid var(--line-strong);border-radius:var(--r-pill);padding:1px 8px;margin-left:6px;font-weight:500}
+.tag{font-size:var(--fs-12);color:var(--ink-dim);border:1px solid var(--line-strong);border-radius:var(--r-pill);padding:1px 8px;margin-left:6px;font-weight:500}
 .wordmark-link{text-decoration:none;color:inherit}
 .head-end{display:inline-flex;align-items:center;gap:8px;flex:none}
-.head-btn{padding:4px 11px;font-size:12.5px;border-radius:var(--r-pill);white-space:nowrap}
+.head-btn{padding:4px 11px;font-size:var(--fs-12);border-radius:var(--r-pill);white-space:nowrap}
 /* An app's own header (B-Origin): the wordmark, the app's name in the true center, the controls. On a phone the name takes its own row, aligned left. */
 header.has-name{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
 header.has-name .head-end{justify-self:end}
-.app-name{font-weight:650;font-size:1rem;color:var(--ink);white-space:nowrap;text-decoration:none;text-align:center}
+.app-name{font-weight:650;font-size:var(--fs-16);color:var(--ink);white-space:nowrap;text-decoration:none;text-align:center}
 @media (max-width:560px){header.has-name{grid-template-columns:auto auto;row-gap:6px}header.has-name .app-name{grid-row:2;grid-column:1/-1;justify-self:start;text-align:left}}
 /* A662 (founder 2026-11-19: "small pill and switch if mobile", then "on desktop, the pill and the switch don't match"): the header's
    Log in / Log out pill and its language switch are ONE height in English and Khmer alike (Khmer's taller line made them 47 and 32):
    34px on a wider screen, 28px on a phone. */
-header .btn.head-btn{display:inline-flex;align-items:center;height:34px;padding:0 14px;font-size:14px;line-height:1}header .seg{height:34px;padding:2px;align-items:stretch;font-size:13px}header .seg>span,header .seg>a,header .seg>button{display:inline-flex;align-items:center;padding:0 11px;line-height:1}
-@media (max-width:560px){header .btn.head-btn{height:28px;padding:0 11px;font-size:12.5px}header .seg{height:28px;padding:1px;font-size:12px}header .seg>span,header .seg>a,header .seg>button{padding:0 9px}}
+header .btn.head-btn{display:inline-flex;align-items:center;height:34px;padding:0 14px;font-size:var(--fs-14);line-height:1}header .seg{height:34px;padding:2px;align-items:stretch;font-size:var(--fs-14)}header .seg>span,header .seg>a,header .seg>button{display:inline-flex;align-items:center;padding:0 11px;line-height:1}
+@media (max-width:560px){header .btn.head-btn{height:28px;padding:0 11px;font-size:var(--fs-12)}header .seg{height:28px;padding:1px;font-size:var(--fs-12)}header .seg>span,header .seg>a,header .seg>button{padding:0 9px}}
 .nav{display:flex;gap:2px;margin:2px 0 10px;border-bottom:1px solid var(--line);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 .nav::-webkit-scrollbar{display:none}
-.nav a{padding:8px 11px;font-size:14px;font-weight:600;color:var(--ink-dim);text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.nav{scroll-snap-type:x mandatory;padding-right:48px;-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 48px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 48px),transparent)}.nav a{scroll-snap-align:start}
+/* The › (theme.js adds it; founder 2026-11-20): pinned to the strip's right end, carrying the fade; with it the strip's own fade and end padding are off. */
+.nav.has-more{padding-right:0;-webkit-mask-image:none;mask-image:none}
+.nav-more{position:sticky;right:0;flex:none;display:flex;align-items:center;justify-content:flex-end;width:48px;margin-left:auto;padding-right:2px;font:600 var(--fs-20)/1 var(--font-text);color:var(--ink-dim);background:linear-gradient(to right,transparent,var(--bg) 55%);cursor:pointer;user-select:none;-webkit-user-select:none}
+.nav-more:hover{color:var(--ink)}
+/* The app's name: in the header from 561 px up; on a phone (≤ 560 px) it is the strip's first item instead (founder 2026-11-20). One string, rendered
+   in both places by each site's server, so it is there from the first paint; CSS shows exactly one. */
+.nav .nav-name{display:none;color:var(--ink);font-weight:650}
+@media (max-width:560px){header.has-name .app-name{display:none}.nav .nav-name{display:block}
+  /* the name IS the way home on a phone: the Home tab right after it (a root address) is dropped there, and the name carries Home's
+     current-page underline (reconciled 2026-11-20 at the founder's "Reconcile the three questions for me"; correctable) */
+  .nav .nav-name+a[href$="/"]{display:none}.nav .nav-name:has(+a[href$="/"][aria-current=page]){color:var(--ink);border-bottom-color:var(--accent)}}
+@media (min-width:1024px){:root{--fs-title:var(--fs-40)}
+  .app:has(>.nav){max-width:62rem;display:grid;grid-template-columns:12.5rem minmax(0,1fr);grid-template-rows:auto 1fr auto;grid-template-areas:"head head" "nav main" "foot foot";column-gap:40px}
+  .app:has(>.nav)>header{grid-area:head}.app:has(>.nav)>header.has-name{grid-template-columns:12.5rem minmax(0,1fr) auto;column-gap:40px}.app:has(>.nav)>header.has-name .app-name{justify-self:start;text-align:left}.app:has(>.nav)>main{grid-area:main;min-width:0}.app:has(>.nav)>footer{grid-area:foot}
+  .app:has(>.nav)>.nav{grid-area:nav;flex-direction:column;align-self:start;position:sticky;top:20px;gap:2px;margin:12px 0 0;padding:0;border-bottom:0;overflow:visible;scroll-snap-type:none;-webkit-mask-image:none;mask-image:none}
+  .app:has(>.nav)>.nav .nav-more{display:none}.app:has(>.nav)>.nav a{white-space:normal;border-bottom:0;margin:0;border-left:2px solid transparent;border-radius:0 10px 10px 0;padding:9px 12px}
+  .app:has(>.nav)>.nav a[aria-current=page]{border-left-color:var(--accent);background:var(--wash)}.app:has(>.nav)>.nav a:hover{color:var(--ink)}}
+.nav a{padding:8px 11px;font-size:var(--fs-14);font-weight:600;color:var(--ink-dim);text-decoration:none;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
 .nav a[aria-current=page]{color:var(--ink);border-bottom-color:var(--accent)}
 .hero{text-align:center;padding:18px 0 6px}
 .cta-grid{display:grid;gap:12px}
@@ -115,7 +137,7 @@ header .btn.head-btn{display:inline-flex;align-items:center;height:34px;padding:
 .btn.wide{display:block;width:100%;box-sizing:border-box;text-align:center;margin-top:20px}
 /* Every status update is a temporary toast (public/toast.js, /build Default 15): one at the foot of the page, gone by itself. */
 .toast{position:fixed;left:50%;bottom:24px;z-index:40;translate:-50% 12px;opacity:0;pointer-events:none;transition:opacity .2s,translate .2s;
-  background:var(--surface);border:1px solid var(--line-strong);border-radius:22px;padding:10px 18px;font-size:14px;box-shadow:0 8px 24px rgba(0,0,0,.18);
+  background:var(--surface);border:1px solid var(--line-strong);border-radius:22px;padding:10px 18px;font-size:var(--fs-14);box-shadow:0 8px 24px rgba(0,0,0,.18);
   width:max-content;max-width:min(28rem,calc(100vw - 32px));text-align:center;color:var(--ink)}
 .toast.on{opacity:1;translate:-50% 0;pointer-events:auto}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}

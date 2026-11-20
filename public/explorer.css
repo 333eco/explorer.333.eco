@@ -1,29 +1,32 @@
-.ex-search{display:flex;gap:8px;align-items:stretch;margin:14px 0 6px}.ex-search input{flex:1;min-width:0;font:inherit;font-size:16px;padding:10px 12px;border-radius:12px;border:1px solid var(--line-strong);background:var(--bg);color:var(--ink)}
+.ex-search{display:flex;gap:8px;align-items:stretch;margin:14px 0 6px}.ex-search input{flex:1;min-width:0;font:inherit;font-size:var(--fs-16);padding:10px 12px;border-radius:12px;border:1px solid var(--line-strong);background:var(--bg);color:var(--ink)}
 .ex-search .btn{width:auto;margin:0;padding-inline:16px}
-.ex-file{display:inline-block;margin:2px 0 16px;font-size:14px;color:var(--accent);cursor:pointer;text-decoration:underline}.ex-file input{position:absolute;width:1px;height:1px;opacity:0}
-.ex-table{width:100%;border-collapse:collapse;font-size:14px}.ex-table th{text-align:left;font-weight:600;color:var(--ink-dim);padding:6px 8px 6px 0;border-bottom:1px solid var(--line-strong)}.ex-table td{padding:9px 8px 9px 0;border-bottom:1px solid var(--line);vertical-align:top}
-.ex-scroll{overflow-x:auto}.ex-mono{font-family:var(--font-mono);font-size:13px;overflow-wrap:anywhere}
+.ex-file{display:inline-block;margin:2px 0 16px;font-size:var(--fs-14);color:var(--accent);cursor:pointer;text-decoration:underline}.ex-file input{position:absolute;width:1px;height:1px;opacity:0}
+.ex-table{width:100%;border-collapse:collapse;font-size:var(--fs-14)}.ex-table th{text-align:left;font-weight:600;color:var(--ink-dim);padding:6px 8px 6px 0;border-bottom:1px solid var(--line-strong)}.ex-table td{padding:9px 8px 9px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.ex-scroll{overflow-x:auto}.ex-mono{font-family:var(--font-mono);font-size:var(--fs-12);overflow-wrap:anywhere}
 .ex-kv{display:grid;grid-template-columns:minmax(110px,auto) 1fr;gap:6px 14px;margin:0}.ex-kv dt{color:var(--ink-dim)}.ex-kv dd{margin:0;overflow-wrap:anywhere}
 .ex-leg{padding:11px 0;border-top:1px solid var(--line)}.ex-leg:first-of-type{border-top:0}.ex-leg b{display:block;font-weight:650}.ex-leg p{margin:3px 0 0;overflow-wrap:anywhere}
 .ex-ok::before{content:"✓ ";color:var(--accent)}.ex-bad{color:var(--danger,#b3261e)}
-.ex-row{display:block;text-decoration:none;color:inherit;padding:12px 0;border-top:1px solid var(--line)}.ex-row:first-child{border-top:0}.ex-row b{display:block;font-weight:650;color:var(--ink)}.ex-row span{font-size:13.5px;color:var(--ink-dim)}.ex-row:hover b{color:var(--accent)}
+.ex-row{display:block;text-decoration:none;color:inherit;padding:12px 0;border-top:1px solid var(--line)}.ex-row:first-child{border-top:0}.ex-row b{display:block;font-weight:650;color:var(--ink)}.ex-row span{font-size:var(--fs-14);color:var(--ink-dim)}.ex-row:hover b{color:var(--accent)}
 .ex-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .ex-more{width:100%}.ex-gap{margin-top:14px}
 .ex-count{margin:4px 0 12px}
-a.ex-doc{display:block;text-decoration:none;color:inherit;margin-bottom:10px}a.ex-doc b{display:block;font-weight:650;color:var(--ink);margin-bottom:4px}a.ex-doc>span{font-size:13.5px;color:var(--ink-dim)}a.ex-doc:hover{border-color:var(--accent)}a.ex-doc:hover b{color:var(--accent)}
-.ex-sub{margin:0 0 8px;font-size:15.5px;line-height:1.45;color:var(--ink);overflow-wrap:anywhere}a.ex-doc .ex-sub{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;margin:0 0 6px;font-size:14.5px}
+a.ex-doc{display:block;text-decoration:none;color:inherit;margin-bottom:10px}a.ex-doc b{display:block;font-weight:650;color:var(--ink);margin-bottom:4px}a.ex-doc>span{font-size:var(--fs-14);color:var(--ink-dim)}a.ex-doc:hover{border-color:var(--accent)}a.ex-doc:hover b{color:var(--accent)}
+.ex-sub{margin:0 0 8px;font-size:var(--fs-16);line-height:1.45;color:var(--ink);overflow-wrap:anywhere}a.ex-doc .ex-sub{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;margin:0 0 6px;font-size:var(--fs-14)}
 .ex-row{display:block}a.ex-row{text-decoration:none}
 
 .ex-first{border-top:0;border-left:3px solid var(--accent);background:var(--wash);border-radius:0 12px 12px 0;padding:11px 12px;margin:0 0 4px}
 .ex-ver .ex-chips{margin:4px 0 0}.ex-ver .ex-chips:empty{display:none}
 .ex-note{font-style:italic;margin:-2px 4px 14px}
-.ex-kinds{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 0}.ex-kinds .pill{font:inherit;font-size:13px;padding:6px 12px;background:none;cursor:pointer}.ex-kinds .pill.on{background:var(--wash)}
-.ex-raw{margin:8px 0 0;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere}.ex-entry{margin-bottom:10px}.card details summary{cursor:pointer;font-weight:600}.card details{margin-top:12px}.ex-entry details{margin:0}
+.ex-kinds{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 0}.ex-kinds .pill{font:inherit;font-size:var(--fs-12);padding:6px 12px;background:none;cursor:pointer}.ex-kinds .pill.on{background:var(--wash)}
+.ex-raw{margin:8px 0 0;font-size:var(--fs-12);white-space:pre-wrap;overflow-wrap:anywhere}.ex-entry{margin-bottom:10px}.card details summary{cursor:pointer;font-weight:600}.card details{margin-top:12px}.ex-entry details{margin:0}
 /* The ledger page's receipt box: the whole width of its card (founder 2026-11-07). */
-.ex-receipt { display: block; width: 100%; box-sizing: border-box; margin: .5rem 0; font: inherit; font-family: var(--mono, ui-monospace, monospace); font-size: max(16px, .85em); }
+.ex-receipt { display: block; width: 100%; box-sizing: border-box; margin: .5rem 0; font: inherit; font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-16); }
 /* A B-Mail's signed body, as text (founder 2026-11-12). */
 .ex-mail{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0 0;font:inherit;line-height:1.55}
 /* A645 (2026-11-19): every page paints a short "Reading…" card, then its checked results. hb.css pins the footer to the bottom of a short
    page, so the results pushed it down: a layout shift of 0.13 on every page. A screen's height for <main> keeps the footer below the fold
    from the first paint, so nothing a reader can see moves. */
 main#view{min-height:100vh;min-height:100svh}
+/* every link a 24 px target (founder 2026-11-20, /beautify round 4): a record number in a table cell (8–17 px wide), a link standing alone in
+   main (18 px), the legend's Source link (17 px) */
+.ex-table td>a{display:inline-flex;align-items:center;min-width:24px;min-height:24px}.app>main>a:not(.btn),.ex-leg p>a{display:inline-block;padding:3px 0}
