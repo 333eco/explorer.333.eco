@@ -244,7 +244,8 @@ try {
         must((await genres()).length >= 3, "CONTROL: unfiltered, the list shows several kinds");
         await press("Essays"); await sleep(100); must((await genres()).length === 1 && /kind=essays$/.test(await ev("location.search")), "Essays shows one kind, and the address says so");
         await ev(`(()=>{const i=document.querySelector('input[type=search]');i.value='change';i.dispatchEvent(new Event('input'));})()`); await sleep(100); must((await genres()).length === 1 && /change/i.test(await body()), "search stays inside the filter"); await ev(`(()=>{const i=document.querySelector('input[type=search]');i.value='';i.dispatchEvent(new Event('input'));})()`);
-        await ev(`document.querySelector('a.card.ex-doc').click()`); await until(`/How early/.test(document.querySelector('main').innerText)`, "a document"); await cdp("Page.navigate", { url: "http://localhost:8798/corpus?kind=essays" }); await until(`document.querySelector('.ex-kinds .pill.on')?.textContent==='Essays'`, "the shared address"); must(true, "a shared address opens filtered");
+        // ⚠️ a SERVED card: held papers (2a197cd) sit in the list by date and link to their own page off this site (A673)
+        await ev(`document.querySelector('a.card.ex-doc[href^="/corpus/"]').click()`); await until(`/How early/.test(document.querySelector('main').innerText)`, "a document"); await cdp("Page.navigate", { url: "http://localhost:8798/corpus?kind=essays" }); await until(`document.querySelector('.ex-kinds .pill.on')?.textContent==='Essays'`, "the shared address"); must(true, "a shared address opens filtered");
         await press("Other"); await sleep(100); must((await ev(`document.querySelectorAll('a.card.ex-doc').length`)) === 3, "Other holds the three that fit no kind"); await press("All"); await sleep(100); must(!(await ev("location.search")), "All clears the address");
         must(await ev(`document.querySelector('.ex-kinds').getBoundingClientRect().bottom<=document.querySelector('input[type=search]').getBoundingClientRect().top`), "the filters sit above the search box"); await noSideways("filter"); await shot("11-filter");
     }
@@ -261,7 +262,12 @@ try {
         const neither = index.find((d) => d.genre !== "letters" && !d.subtitle && !d.title.includes(": "));
         if (!neither) console.log("NOT RUN a paper with neither a subtitle nor a colon: the index has none today");
         for (let i = 0; i < 10 && await ev(`!!document.querySelector('.ex-more')`); i++) await ev(`document.querySelector('.ex-more').click()`);
-        const cards = new Map((await ev(`[...document.querySelectorAll('a.card.ex-doc')].map(a=>[a.getAttribute('href').split('/').pop(),a.querySelector('b').textContent,a.querySelector('.ex-sub')?.textContent??''])`)).map(([slug, b, s]) => [slug, [b, s]]));
+        const cards = new Map((await ev(`[...document.querySelectorAll('a.card.ex-doc[href^="/corpus/"]')].map(a=>[a.getAttribute('href').split('/').pop(),a.querySelector('b').textContent,a.querySelector('.ex-sub')?.textContent??''])`)).map(([slug, b, s]) => [slug, [b, s]]));
+        // ⭐ the HELD papers (founder 2026-11-20): every one the index's manifest names is listed, marked "Not yet archived", linking to its
+        // own page off this site — never to a /corpus/ page the index cannot serve
+        const held = await ev(`fetch('https://corpus.333.eco/manifest.json').then(r=>r.json()).then(j=>j.held_documents.map(d=>d.slug))`);
+        const heldCards = await ev(`[...document.querySelectorAll('a.card.ex-doc:not([href^="/corpus/"])')].map(a=>[a.getAttribute('href'),[...a.querySelectorAll('.pill')].map(p=>p.textContent).join('+')])`);
+        must(heldCards.length === held.length && heldCards.every(([h, p]) => /^https:\/\//.test(h) && /Not yet archived/.test(p)) && held.every((slug) => heldCards.some(([h]) => h.endsWith("/" + slug))), `every held paper is listed, marked and linking to its own page (${heldCards.length} of ${held.length})`);
         const clean = (s) => s.replace(/\\"/g, '"').replace(/\*/g, ""), wrong = index.filter((d) => { const e = expect(d), c = cards.get(d.slug); return !c || c[0] !== e[0] || c[1] !== clean(e[1]); });
         must(cards.size === index.length && wrong.length === 0, `every card reads its own title and subtitle, word for word (${cards.size}${wrong.length ? `; wrong: ${wrong.slice(0, 4).map((d) => d.slug).join(", ")}` : ""})`);
         const main = () => ev(`[document.querySelector('h1').textContent,document.querySelector('.ex-sub')?.textContent??'']`);
