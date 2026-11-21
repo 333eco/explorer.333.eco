@@ -141,3 +141,14 @@ header .btn.head-btn{display:inline-flex;align-items:center;height:34px;padding:
   width:max-content;max-width:min(28rem,calc(100vw - 32px));text-align:center;color:var(--ink)}
 .toast.on{opacity:1;translate:-50% 0;pointer-events:auto}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
+/* ⭐ A TABLE OF 2+ COLUMNS IS A STACK OF CARDS ON A PHONE (founder 2026-11-20: tables squeezed words mid-word under 600 px). Each row a
+   card, each cell its label then its value; the header row is read aloud, never drawn. Opt-in by data: a page stamps `data-label` on
+   the cells of a 2+ column table (and the table roles, which display:block would drop); a table without labels is untouched. */
+@media (max-width:600px){
+table:has(td[data-label]),table:has(td[data-label])>tbody,table:has(td[data-label]) tr,table:has(td[data-label]) td,table:has(td[data-label])>tbody th{display:block;width:auto}
+table:has(td[data-label])>thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+table:has(td[data-label]) tr{padding:12px 0;border-bottom:1px solid var(--line)}
+table:has(td[data-label]) tr:last-child{border-bottom:0}
+table:has(td[data-label]) td,table:has(td[data-label])>tbody th{padding:3px 0;border:0;text-align:left}
+table:has(td[data-label]) [data-label]::before{content:attr(data-label);display:block;font-size:var(--fs-12);font-weight:500;color:var(--ink-dim);margin-bottom:2px}
+}

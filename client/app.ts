@@ -80,6 +80,24 @@ const entryTile = (index: number, size: number) => {
     do { const part = String(v % 1000).padStart(3, "0"); s = (first ? part : `x${part}/`) + s; first = false; v = Math.floor(v / 1000); } while (v > 0);
     return `${LOG}tile/entries/${s}${width ? `.p/${width}` : ""}`;
 };
+// ⭐ A table of 2+ columns stacks on a phone (founder 2026-11-20; the rule is in hb.css, under 600 px): every body cell carries its column's
+//   label from the header row, and the table its roles (display:block would drop them). Idempotent: a row added later (Show more) is
+//   labeled when it arrives; a one-column table is left alone.
+function labelTables(root: ParentNode) {
+    for (const t of root.querySelectorAll("table")) {
+        const labels = [...t.querySelectorAll(":scope > thead th")].map((x) => (x.textContent ?? "").replace(/\s+/g, " ").trim());
+        if (labels.length < 2) continue;
+        t.setAttribute("role", "table");
+        for (const g of t.querySelectorAll(":scope > thead, :scope > tbody")) g.setAttribute("role", "rowgroup");
+        for (const th of t.querySelectorAll(":scope > thead th")) th.setAttribute("role", "columnheader");
+        for (const tr of t.querySelectorAll(":scope > thead > tr, :scope > tbody > tr")) {
+            tr.setAttribute("role", "row");
+            if (tr.parentElement?.tagName === "THEAD") continue;
+            [...tr.children].forEach((c, i) => { c.setAttribute("role", c.tagName === "TH" ? "rowheader" : "cell"); if (labels[i] && !c.hasAttribute("data-label")) c.setAttribute("data-label", labels[i]); });
+        }
+    }
+}
+new MutationObserver(() => labelTables(view.el)).observe(view.el, { childList: true, subtree: true });
 const viewHref = (url: string, entry?: number) => `/view?src=${encodeURIComponent(url)}${entry === undefined ? "" : `&entry=${entry}`}`;
 const tickNote = () => h("p", { class: "fine ex-note" }, say("A tick means it was checked on this page just now. No tick means it's stated, with where to check it.", "សញ្ញាធីកមានន័យថាបានពិនិត្យនៅលើទំព័រនេះមុននេះបន្តិច។ គ្មានសញ្ញាធីកមានន័យថាវាត្រូវបាននិយាយ ជាមួយកន្លែងដែលត្រូវពិនិត្យ។"));
 const code = (s: string) => h("pre", { class: "code" }, h("code", {}, s));
