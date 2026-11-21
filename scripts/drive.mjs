@@ -73,6 +73,15 @@ try {
     must(/\/origin$/.test(await ev("location.pathname")), "the root opens the records"); must(await ev(`document.title==='Records · B-Explorer' && document.querySelector('h1').textContent==='Records' && /B-Explorer/.test(document.querySelector('.app-name').textContent) && /B-Origin℠/.test(document.querySelector('.nav').textContent)`), "the names are as ruled");
     must(/Made by hand|Made with AI|Photo or|Edited|Combined/.test(await body()), "record 0 is listed, in plain words");
     await shot("1-origin"); await noSideways("records");
+    {   // 2026-11-20 (a /health FAIL): ANY unknown address painted the records list, so the Safari floor run could not tell /origin from
+        // a typo. An unknown address must say so and link back; the records page must stay the records page.
+        await go("/no-such-page"); let seen = "";
+        for (let t = 0; t < 10000 && !/can't open that address|all checked/.test(seen); t += 150) { await sleep(150); seen = await body().catch(() => ""); }
+        must(/can't open that address/.test(seen), "an unknown address says so, and is not the records page");
+        must(await ev(`[...document.querySelectorAll('main a')].some(a=>new URL(a.href).pathname==='/origin')`), "and it links back to the records");
+        must(await ev(`document.title!=='Records · B-Explorer'`), "and its title is not the records'");
+        await go("/origin"); await until(`/all checked/.test(document.querySelector('main').innerText)`, "the records again"); // the checks below read the records page
+    }
     must(await ev(`[...document.querySelectorAll('.ex-ok')].every(b=>b.closest('.ex-leg').querySelector('a[href]'))`), "every ticked row on the records page links its source");
     must(await ev(`[...document.querySelectorAll('main a')].some(a=>a.href==='https://developers.333.eco/verify#tree')`), "the records page links how the log holds together");
     await ev(`document.querySelector('table a').click()`); await until(`/Checked in your browser/.test(document.querySelector('main').innerText)`, "the record");
