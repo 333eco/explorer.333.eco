@@ -459,6 +459,9 @@ async function manifestTokens(url: string, manifest: Uint8Array) {
         } catch { return { name }; }
     })) as Promise<{ name: string; ok?: boolean; time?: string }[]>;
 }
+/** The SHA-256 of the text at a public address, hashed here once per page load (the today leg and the version history both need it); null when it can't be read. */
+const textHashes = new Map<string, Promise<string | null>>();
+const textHash = (url: string) => { let p = textHashes.get(url); if (!p) { p = fetch(url).then(async (r) => (r.ok ? hex(await sha256(new Uint8Array(await r.arrayBuffer()))) : null)).catch(() => null); textHashes.set(url, p); } return p; };
 /** Three checks that run here against the public repository. A failed fetch says "couldn't check", never "failed". */
 async function liveLegs(d: Doc, into: HTMLElement) {
     const put = (key: string, node: Node) => into.querySelector(`[data-leg="${key}"]`)?.replaceWith(node);
@@ -466,8 +469,7 @@ async function liveLegs(d: Doc, into: HTMLElement) {
     await Promise.all([
         (async () => {
             try {
-                const r = await fetch(d.source_url!); if (!r.ok) throw new Error();
-                const got = hex(await sha256(new Uint8Array(await r.arrayBuffer())));
+                const got = await textHash(d.source_url!); if (got === null) throw new Error();
                 put("today", got === d.sha256 ? leg(true, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា"), say("The repository's text has this fingerprint, hashed here just now. ", "អត្ថបទរបស់ឃ្លាំងមានស្នាមម្រាមដៃនេះ ដែលបានហាសនៅទីនេះមុននេះបន្តិច។ "), source(viewHref(d.source_url!))) : leg(null, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា"), say("The repository's text is newer than this index. The index catches up when the change finishes its chain.", "អត្ថបទរបស់ឃ្លាំងថ្មីជាងសន្ទស្សន៍នេះ។ សន្ទស្សន៍តាមទាន់នៅពេលការផ្លាស់ប្តូរបញ្ចប់ខ្សែសង្វាក់របស់វា។")));
             } catch { put("today", leg(null, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា"), say("The repository can't be read right now, so this wasn't checked.", "មិនអាចអានឃ្លាំងបានឥឡូវនេះទេ ដូច្នេះនេះមិនត្រូវបានពិនិត្យទេ។"))); }
         })(),
@@ -507,7 +509,7 @@ async function liveLegs(d: Doc, into: HTMLElement) {
 }
 /* The paper's history. Everything is read from where it lives, in this browser; what can't be read leaves a gap, never a failure. */
 interface Version { digest: string; proof: string; anchor: Anchor; commit?: string; day?: string; manifest?: string }
-interface History { versions: Version[]; proofsRead: boolean; partial: boolean; repo?: string; branch?: string; path?: string; firstCommit?: string; gitRead: boolean; gitFailed: boolean; zenodo?: { at: string; url: string }; archive?: { at: string; url: string }; archiveUnsure?: boolean; tdcommons?: { at: string; url: string }; publicRead: boolean }
+interface History { versions: Version[]; today?: string; proofsRead: boolean; partial: boolean; repo?: string; branch?: string; path?: string; firstCommit?: string; gitRead: boolean; gitFailed: boolean; zenodo?: { at: string; url: string }; archive?: { at: string; url: string }; archiveUnsure?: boolean; tdcommons?: { at: string; url: string }; publicRead: boolean }
 /** An OpenTimestamps file names the digest it speaks of: 31 bytes of magic, a version byte, the SHA-256 tag, then 32 bytes. */
 const otsDigest = (b: Uint8Array) => (b.length >= 65 && b[32] === 0x08 ? hex(b.subarray(33, 65)) : null);
 async function readProofs(d: Doc, x: History) {
@@ -596,12 +598,16 @@ function historyOf(d: Doc, paint: () => void) {
     const again = () => entry.paint();
     (async () => {
         const pub = readPublic(d, x).then(again);
-        if (d.source_url) { await readProofs(d, x); again(); if (x.repo && x.versions.length) await readRepository(x, again); }
+        if (d.source_url) { const [today] = await Promise.all([textHash(d.source_url), readProofs(d, x)]); x.today = today ?? undefined; again(); if (x.repo && x.versions.length) await readRepository(x, again); }
         x.proofsRead = true; x.gitRead = true; again(); await pub;
     })();
     paint();
     return x;
 }
+/** ⛔ 2026-11-20 (the explorer's ticks): a proof file names its own fingerprint, so its block check alone says nothing about THIS paper. A
+ *  version is ticked only when that fingerprint is today's text, hashed here, or the text of one of this paper's commits, hashed here. */
+const tiedOf = (v: Version, x: History) => v.digest === x.today || !!v.commit;
+const untied = () => say("This version's text wasn't found in the repository and hashed here to this fingerprint.", "អត្ថបទនៃកំណែនេះមិនត្រូវបានរកឃើញក្នុងឃ្លាំង ហើយហាសនៅទីនេះទៅស្នាមម្រាមដៃនេះទេ។");
 const earliestOf = (x: History) => x.versions.reduce<Version | null>((best, v) => (v.anchor.height !== undefined && (!best || v.anchor.height < best.anchor.height!) ? v : best), null);
 function howEarly(x: History) {
     const first = earliestOf(x), n1 = first ? x.versions.indexOf(first) + 1 : 0, reading = say("Reading…", "កំពុងអាន…");
@@ -609,8 +615,9 @@ function howEarly(x: History) {
     const signed = x.versions.filter((v) => v.manifest).map((v) => v.manifest!).sort()[0];
     const existed = !first
         ? leg(null, say("Earliest proof", "ភស្តុតាងដំបូងបំផុត"), x.proofsRead ? say("No proof has reached a block yet.", "មិនទាន់មានភស្តុតាងទៅដល់ប្លុកនៅឡើយទេ។") : reading)
-        : leg(first.anchor.checked, first.anchor.time ? say(`Earliest proof: ${date(first.anchor.time)}`, `ភស្តុតាងដំបូងបំផុត៖ ${date(first.anchor.time)}`) : say("Earliest proof", "ភស្តុតាងដំបូងបំផុត"),
-            say(`Version ${n(n1)} is in Bitcoin `, `កំណែទី ${n(n1)} នៅក្នុង Bitcoin `), proofLink, say(".", "។"), signed ? say(` Timestamp authorities signed a version in the ${signed} manifest.`, ` អាជ្ញាធរបោះត្រាពេលវេលាបានចុះហត្ថលេខាលើកំណែមួយនៅក្នុងបញ្ជី ${signed}។`) : null);
+        : leg(first.anchor.checked === true && !tiedOf(first, x) ? null : first.anchor.checked, first.anchor.time ? say(`Earliest proof: ${date(first.anchor.time)}`, `ភស្តុតាងដំបូងបំផុត៖ ${date(first.anchor.time)}`) : say("Earliest proof", "ភស្តុតាងដំបូងបំផុត"),
+            say(`Version ${n(n1)} is in Bitcoin `, `កំណែទី ${n(n1)} នៅក្នុង Bitcoin `), proofLink, say(".", "។"), signed ? say(` Timestamp authorities signed a version in the ${signed} manifest.`, ` អាជ្ញាធរបោះត្រាពេលវេលាបានចុះហត្ថលេខាលើកំណែមួយនៅក្នុងបញ្ជី ${signed}។`) : null,
+            first.anchor.checked === true && !tiedOf(first, x) && x.gitRead ? ` ${untied()}` : null);
     existed.classList.add("ex-first");
     const dated = [x.zenodo && { at: x.zenodo.at, node: h("p", {}, say(`Zenodo published its first version on ${date(x.zenodo.at)}. `, `Zenodo បានបោះពុម្ពកំណែដំបូងរបស់វានៅ ${date(x.zenodo.at)}។ `), link(x.zenodo.url, say("The record", "កំណត់ត្រា"))) },
         x.tdcommons && { at: x.tdcommons.at, node: h("p", {}, say(`TDCommons posted it on ${date(x.tdcommons.at)}, by this repository's record. `, `TDCommons បានបង្ហោះវានៅ ${date(x.tdcommons.at)} តាមកំណត់ត្រារបស់ឃ្លាំងនេះ។ `), link(x.tdcommons.url, say("The posting", "ការបង្ហោះ"))) },
@@ -629,12 +636,13 @@ function versionsCard(d: Doc, x: History) {
     if (!x.versions.length) return null;
     const first = earliestOf(x), history = x.repo ? `https://github.com/${x.repo}/commits/${x.branch}/${x.path}` : null;
     const row = (v: Version, i: number) => {
-        const a = v.anchor;
+        const a = v.anchor, tied = tiedOf(v, x);
         const title = a.time ? say(`Version ${n(i + 1)} · ${date(a.time)}`, `កំណែទី ${n(i + 1)} · ${date(a.time)}`) : say(`Version ${n(i + 1)}`, `កំណែទី ${n(i + 1)}`);
-        const el = h("div", { class: "ex-leg ex-ver" }, h("b", { class: a.checked === true ? "ex-ok" : a.checked === false ? "ex-bad" : "" }, title),
+        const el = h("div", { class: "ex-leg ex-ver" }, h("b", { class: a.checked === true && tied ? "ex-ok" : a.checked === false ? "ex-bad" : "" }, title),
             h("span", { class: "ex-chips" }, v === first ? h("span", { class: "pill on" }, say("Earliest proof", "ភស្តុតាងដំបូងបំផុត")) : null, v.digest === d.sha256 ? h("span", { class: "pill on" }, say("Today's text", "អត្ថបទថ្ងៃនេះ")) : null),
             h("p", {}, a.height !== undefined ? link(`https://mempool.space/block/${a.height}`, say(`Block ${n(a.height)}`, `ប្លុក ${n(a.height)}`)) : say("Waiting for a block", "កំពុងរង់ចាំប្លុក"), " · ", h("span", { class: "ex-mono" }, short(v.digest)), " · ", link(viewHref(v.proof), say("The proof", "ភស្តុតាង"))),
             a.checked === false ? h("p", {}, say("This block's header, as mempool.space serves it, doesn't hold this proof.", "ក្បាលប្លុកនេះ ដូចដែល mempool.space ផ្តល់ឱ្យ មិនមានភស្តុតាងនេះទេ។")) : null,
+            a.checked === true && !tied && x.gitRead ? h("p", {}, untied()) : null,
             v.manifest ? h("p", {}, say(`Signed by timestamp authorities in the ${v.manifest} manifest.`, `បានចុះហត្ថលេខាដោយអាជ្ញាធរបោះត្រាពេលវេលានៅក្នុងបញ្ជី ${v.manifest}។`)) : null,
             v.commit ? h("p", {}, link(`https://github.com/${x.repo}/blob/${v.commit}/${x.path}`, say("Read this version", "អានកំណែនេះ")), " · ", link(`https://github.com/${x.repo}/commit/${v.commit}`, say("What changed", "អ្វីដែលបានផ្លាស់ប្តូរ"))) : null);
         if (v === first) el.classList.add("ex-first");

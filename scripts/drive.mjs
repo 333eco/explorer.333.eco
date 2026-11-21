@@ -265,6 +265,22 @@ try {
         must(await ev(`document.querySelectorAll('.ex-ver').length`) === rows, "CONTROL: GitHub refusing keeps every proof's row and says what's missing");
         githubOut = false; await cdp("Fetch.disable"); await cdp("Network.setCacheDisabled", { cacheDisabled: false });
     }
+    {   // 2026-11-20 (the explorer's ticks, 3): a version's proof is ticked only when its fingerprint is tied to THIS paper: today's text,
+        // hashed here, or a commit of this paper whose text hashed here to it. The tick was the block check alone, for whatever fingerprint
+        // the .ots file names. CONTROL: another paper's proof served as each of this paper's (GitHub refused, so only today's text can tie).
+        const slug = "zero-point-game", other = Buffer.from(await (await fetch("https://raw.githubusercontent.com/thonly/publications/main/defensive-publications/a-promise-that-cannot-grow.md.r1.ots")).arrayBuffer());
+        await cdp("Network.setCacheDisabled", { cacheDisabled: true });
+        await cdp("Fetch.enable", { patterns: [{ urlPattern: "*api.github.com*" }, { urlPattern: `*${slug}.md*.ots` }] });
+        forge = async (url) => { // only the proofs that exist: the page reads .r1, .r2, … until one is missing
+            if (/api\.github\.com/.test(url)) return { status: 403, body: "{}" };
+            if (!new RegExp(`${slug}\\.md(\\.r\\d+)?\\.ots$`).test(url)) return undefined;
+            const r = await fetch(url); return r.ok ? { body: other } : { status: r.status, body: "" }; };
+        await go(`/corpus/${slug}`); await until(`/GitHub.s limit/.test(document.querySelector('main').innerText) && /Earliest proof: \\w/.test(document.querySelector('.ex-leg.ex-first b')?.textContent)`, "another paper's proofs, checked to their block");
+        const got = await ev(`({ early: document.querySelector('.ex-leg.ex-first b').textContent, ticked: [...document.querySelectorAll('.ex-ok')].map(b=>b.textContent) })`);
+        must(!got.ticked.some((t) => /Version|Earliest proof/.test(t)), `CONTROL: another paper's proof, served as this paper's, reaches its block (${got.early}) and gets no tick (${got.ticked.join(" | ")})`);
+        must(/wasn.t found in the repository/.test(await body()), "and it says the fingerprint wasn't tied to this paper's text");
+        forge = null; await cdp("Fetch.disable"); await cdp("Network.setCacheDisabled", { cacheDisabled: false });
+    }
     {   // Newest first, with the index's dates in words among them: the found bug put all of them on top.
         const got = await ev(`fetch('https://corpus.333.eco/provenance.json').then(r=>r.json()).then(j=>j.documents.map(d=>d.date))`), words = got.filter((x) => /^\d{1,2} [A-Z]/.test(x));
         must(words.length > 0, `CONTROL: the index still holds dates in words (${words.length}), so the next check can fail`);
