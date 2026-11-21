@@ -890,12 +890,15 @@ async function readLedger(o: { full?: boolean } = {}): Promise<LedgerRead> {
         return read;
     } catch (e) { return fail((e as Error).message); }
 }
+const notReceipt = () => leg(false, say("That isn't a receipt", "នោះមិនមែនជាបង្កាន់ដៃទេ"), say("Paste the receipt exactly as your export gives it.", "សូមបិទភ្ជាប់បង្កាន់ដៃឲ្យដូចដែលការនាំចេញរបស់អ្នកផ្តល់ឲ្យ។"));
 async function checkReceipt(raw: string, l: LedgerRead): Promise<Node> {
-    let r: { index: number; seal: string; at: string; origin: string; sig: string };
-    try { r = JSON.parse(raw); if (!Number.isSafeInteger(r.index) || typeof r.seal !== "string" || typeof r.sig !== "string" || typeof r.at !== "string") throw 0; }
-    catch { return leg(false, say("That isn't a receipt", "នោះមិនមែនជាបង្កាន់ដៃទេ"), say("Paste the receipt exactly as your export gives it.", "សូមបិទភ្ជាប់បង្កាន់ដៃឲ្យដូចដែលការនាំចេញរបស់អ្នកផ្តល់ឲ្យ។")); }
+    let r: { index: number; seal: string; at: string; origin: string; sig: string }, seal: Uint8Array;
+    // ⛔ 2026-11-20 (the explorer's ticks): a place below zero, or a seal or signature that isn't base64, threw past this check, and the
+    //   previous receipt's ticks stayed on screen. They are not receipts.
+    try { r = JSON.parse(raw); if (!Number.isSafeInteger(r.index) || r.index < 0 || typeof r.seal !== "string" || typeof r.sig !== "string" || typeof r.at !== "string") throw 0; seal = unb64(r.seal); unb64(r.sig); }
+    catch { return notReceipt(); }
     if (r.origin !== ledgerTrust.origin) return leg(false, say("This receipt is for another log", "បង្កាន់ដៃនេះសម្រាប់កំណត់ហេតុផ្សេង"), String(r.origin ?? ""));
-    const seal = unb64(r.seal), idx = new Uint8Array(8); new DataView(idx.buffer).setBigUint64(0, BigInt(r.index));
+    const idx = new Uint8Array(8); new DataView(idx.buffer).setBigUint64(0, BigInt(r.index));
     let signed = false;
     try {
         const key = await crypto.subtle.importKey("spki", unb64(ledgerTrust.receiptKey), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
@@ -904,7 +907,7 @@ async function checkReceipt(raw: string, l: LedgerRead): Promise<Node> {
     // ⭐ A662: an entry from before this visit's first one was checked on an earlier visit; to compare this receipt with it, read them all.
     const all = r.index < l.from ? await readLedger({ full: true }) : l;
     if (!all.ok) return leg(false, say("The ledger can't be read to compare this receipt", "មិនអាចអានបញ្ជីដើម្បីប្រៀបធៀបបង្កាន់ដៃនេះបានទេ"), all.why ?? "");
-    const inTree = r.index < all.size ? same(all.entries[r.index - all.from], seal) : null;
+    const entry = all.entries[r.index - all.from], inTree = r.index < all.size ? !!entry && same(entry, seal) : null;
     return h("div", {}, leg(signed, signed ? say("The ledger signed this receipt", "បញ្ជីបានចុះហត្ថលេខាលើបង្កាន់ដៃនេះ") : say("This signature does not verify", "ហត្ថលេខានេះមិនត្រឹមត្រូវទេ"), say("Checked here against the ledger's published receipt key.", "បានពិនិត្យនៅទីនេះធៀបនឹងសោបង្កាន់ដៃដែលបានបោះពុម្ពរបស់បញ្ជី។")),
         inTree === null ? leg(null, say("Not in a published checkpoint yet", "មិនទាន់នៅក្នុង checkpoint ដែលបានបោះពុម្ពទេ"), say("The ledger closes once a day. The next close publishes it.", "បញ្ជីបិទម្តងក្នុងមួយថ្ងៃ។ ការបិទបន្ទាប់នឹងបោះពុម្ពវា។"))
             : leg(inTree, inTree ? say("It is in the ledger", "វានៅក្នុងបញ្ជី") : say("It is NOT at that place in the ledger", "វាមិននៅកន្លែងនោះក្នុងបញ្ជីទេ"), say(`Entry ${n(r.index)} was compared with this fingerprint, and the root above was rebuilt from every entry.`, `ធាតុ ${n(r.index)} ត្រូវបានប្រៀបធៀបនឹងស្នាមម្រាមដៃនេះ ហើយឫសខាងលើត្រូវបានសាងសង់ឡើងវិញពីធាតុទាំងអស់។`)));
@@ -959,6 +962,7 @@ async function ledgerPage() {
     if (!l.ok) return view.replaceChildren(title, card(leg(false, say("The ledger didn't pass its check", "បញ្ជីមិនបានឆ្លងការពិនិត្យទេ"), say("Or it can't be read right now, so nothing from it is shown. ", "ឬមិនអាចអានបានឥឡូវនេះ ដូច្នេះគ្មានអ្វីពីវាត្រូវបានបង្ហាញទេ។ "), l.why ?? "")));
     const ended = new Map(l.pub.filter((e) => e.t === "jubilee").map((e) => [e.n!, e.at!]));
     const stampsBox = h("div", {}, h("p", { role: "status" }, say("Checking the outside clocks…", "កំពុងពិនិត្យនាឡិកាខាងក្រៅ…")));
+    let receipts = 0;
     const ta = h("textarea", { rows: "4", class: "ex-receipt", "aria-label": say("A receipt", "បង្កាន់ដៃ"), placeholder: '{"index": …, "seal": "…", "at": "…", "origin": "log.333.eco/ledger", "sig": "…"}' }) as HTMLTextAreaElement, out = h("div", { role: "status" });
     const lastReads = l.pub.filter((e) => e.t === "reads").slice(-1)[0];
     view.replaceChildren(title,
@@ -978,7 +982,10 @@ async function ledgerPage() {
         card(h("h2", {}, say("Outside clocks", "នាឡិកាខាងក្រៅ")), stampsBox),
         lastReads ? card(h("h2", {}, say("Who opened the rows", "អ្នកណាបានបើកជួរ")), h("p", {}, say(`The ledger keeps a record of every time it opens a private row, and each day that record is locked away and its fingerprint is put here, so it can't be changed later. The latest is for ${date(lastReads.day!)}.`, `បញ្ជីរក្សាកំណត់ត្រារាល់ពេលដែលវាបើកជួរឯកជន ហើយរៀងរាល់ថ្ងៃកំណត់ត្រានោះត្រូវបានចាក់សោ ហើយស្នាមម្រាមដៃរបស់វាត្រូវបានដាក់នៅទីនេះ ដូច្នេះវាមិនអាចផ្លាស់ប្តូរនៅពេលក្រោយបានទេ។ ចុងក្រោយគឺសម្រាប់ ${date(lastReads.day!)}។`))) : null,
         card(h("h2", {}, say("Check a receipt", "ពិនិត្យបង្កាន់ដៃ")), h("p", {}, say("Paste a receipt from your own export. It is checked on this device and never sent anywhere.", "បិទភ្ជាប់បង្កាន់ដៃពីការនាំចេញរបស់អ្នក។ វាត្រូវបានពិនិត្យនៅលើឧបករណ៍នេះ ហើយមិនដែលផ្ញើទៅកន្លែងណាទេ។")),
-            h("form", { onsubmit: async (e: Event) => { e.preventDefault(); out.replaceChildren(await checkReceipt(ta.value, l)); } }, ta, h("button", { class: "btn", type: "submit" }, say("Check", "ពិនិត្យ"))), out),
+            // ⛔ 2026-11-20 (the explorer's ticks): each check clears the last result first, a throw is a failed row, and only the newest check
+            //   paints (an older one reading every entry used to land after a newer one, and replace it).
+            h("form", { onsubmit: async (e: Event) => { e.preventDefault(); const run = ++receipts; out.replaceChildren(h("p", {}, say("Checking…", "កំពុងពិនិត្យ…")));
+                const got = await checkReceipt(ta.value, l).catch(() => notReceipt()); if (run === receipts) out.replaceChildren(got); } }, ta, h("button", { class: "btn", type: "submit" }, say("Check", "ពិនិត្យ"))), out),
         card(h("h2", {}, say("What is never shown here", "អ្វីដែលមិនដែលបង្ហាញនៅទីនេះ")), h("p", {}, say("Who thanked whom, what was given, or how much, or how often anyone thanks. Each entry is sealed before it is counted, and only its sealed fingerprint enters the tree.", "អ្នកណាអរគុណអ្នកណា អ្វីដែលបានផ្ដល់ ឬចំនួនប៉ុន្មាន ឬញឹកញាប់ប៉ុណ្ណា។ ធាតុនីមួយៗត្រូវបានបិទត្រាមុនពេលរាប់ មានតែស្នាមម្រាមដៃដែលបានបិទត្រាប៉ុណ្ណោះចូលក្នុងដើមឈើ។"))),
         card(h("h2", {}, say("Check it yourself, without us", "ពិនិត្យដោយខ្លួនឯង ដោយមិនត្រូវការយើង")), h("p", {}, say("Everything here is public at ", "អ្វីៗទាំងអស់នៅទីនេះជាសាធារណៈនៅ "), link(LEDGER + "checkpoint", "log.333.eco/ledger"), say(". The ledger's key:", "។ សោរបស់បញ្ជី៖")), h("p", { class: "ex-mono" }, ledgerTrust.logVkey)),
         tickNote());

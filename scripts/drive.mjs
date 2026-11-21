@@ -173,6 +173,20 @@ try {
         must(/another log/.test(await check(JSON.stringify({ index: 0, seal: "AA", at: "x", origin: "log.333.eco/ledger-test2", sig: "MA" }))), "ledger: a receipt from another log is refused");
         const forged = await check(JSON.stringify({ index: 1, seal: Buffer.alloc(32, 7).toString("base64url"), at: "2026-11-26T00:00Z", origin: "log.333.eco/ledger", sig: "MEUCIQCq" + "A".repeat(80) }));
         must(/does not verify/.test(forged) && /NOT at that place/.test(forged), "ledger CONTROL: a forged receipt fails its signature and its place");
+        // 2026-11-20 (the explorer's ticks, 5): each check replaces the last one's result whatever happens, and only the newest check paints.
+        // A seal that IS in the ledger (the first sealed entry, public in its tile) with a forged signature gets one tick: "It is in the ledger".
+        const tile0 = Buffer.from(await (await fetch("https://log.333.eco/ledger/tile/entries/000")).arrayBuffer()); let sealAt = 0, sealed = null;
+        for (let o = 0; o < tile0.length && !sealed; sealAt++) { const len = tile0.readUInt16BE(o); if (len === 32) { sealed = tile0.subarray(o + 2, o + 34); break; } o += 2 + len; }
+        const placed = JSON.stringify({ index: sealAt, seal: sealed.toString("base64url"), at: "2026-11-26T00:00Z", origin: "log.333.eco/ledger", sig: "MEUCIQCq" + "A".repeat(80) });
+        const submit = async (...vs) => { await ev(`(()=>{const t=document.querySelector('.ex-receipt');for(const v of ${JSON.stringify(vs)}){t.value=v;t.form.requestSubmit();}})()`); await sleep(300); await until(`!/Checking…/.test(document.querySelector('.ex-receipt').form.nextElementSibling.innerText)`, "the receipt's check"); await sleep(2500); return ev(`(()=>{const o=document.querySelector('.ex-receipt').form.nextElementSibling;return { text: o.innerText, ticks: o.querySelectorAll('.ex-ok').length }})()`); };
+        {
+            const got = await submit(placed);
+            must(got.ticks === 1 && /It is in the ledger/.test(got.text) && /does not verify/.test(got.text), "ledger: a receipt whose seal is in the ledger is placed there, and its forged signature still fails");
+            for (const [what, bad] of [["a seal that isn't base64", { ...JSON.parse(placed), seal: "!!!" }], ["a negative place", { ...JSON.parse(placed), index: -1 }]]) {
+                await submit(placed); const after = await submit(JSON.stringify(bad));
+                must(after.ticks === 0 && !/It is in the ledger/.test(after.text) && /isn.t a receipt/.test(after.text), `ledger CONTROL: ${what} replaces the last receipt's tick with a failed row`);
+            }
+        }
         must(await ev(`(()=>{const t=document.querySelector('.ex-receipt'),c=t.closest('.card');const p=parseFloat(getComputedStyle(c).paddingLeft)+parseFloat(getComputedStyle(c).paddingRight);return Math.abs(t.getBoundingClientRect().width-(c.clientWidth-p))<=2})()`), "ledger: the receipt box fills its card's width");
         await shot("20-ledger"); await noSideways("ledger");
         await dark(true); await shot("20-ledger-dark"); await dark(false);
@@ -183,6 +197,12 @@ try {
         await go("/ledger"); await until(`/since this device last checked it|doesn.t extend|didn.t pass/.test(document.querySelector('main').innerText)`, "the ledger, a return visit");
         const tilesRead = await ev(`performance.getEntriesByType('resource').filter((r) => r.name.includes('/ledger/tile/entries/')).length`);
         must(/since this device last checked it/.test(await body()) && tilesRead === Math.ceil(lsize / 256) - mem.size / 256, `ledger: a return visit reads only the new entry tiles (${tilesRead}) and says what this device checked before`);
+        {   // 2026-11-20 (the explorer's ticks, 5): two checks in a row, the first slower (its entry is from before this visit's, so it reads
+            // every entry): only the newer one's result shows, however long the older one takes.
+            await submit(placed, "not json"); await sleep(5000);
+            const got = await ev(`document.querySelector('.ex-receipt').form.nextElementSibling.innerText`);
+            must(/isn.t a receipt/.test(got) && !/It is in the ledger/.test(got), "ledger CONTROL: of two checks in a row, only the newer one's result shows");
+        }
         // CONTROL: a remembered edge from ANOTHER history (one byte changed) must fail the page out loud, say why, and show nothing from it.
         await ev(`(()=>{const m=JSON.parse(localStorage.getItem('explorer.ledger.v1'));const b=[...atob(m.hashes[0])].map((c)=>c.charCodeAt(0));b[0]^=1;m.hashes[0]=btoa(String.fromCharCode(...b));localStorage.setItem('explorer.ledger.v1',JSON.stringify(m));})()`);
         await go("/ledger"); await until(`/doesn.t extend|didn.t pass|since this device/.test(document.querySelector('main').innerText)`, "the ledger, a changed memory");
