@@ -112,7 +112,7 @@ header .btn.head-btn{display:inline-flex;align-items:center;height:34px;padding:
 .nav a[aria-current=page]{color:var(--ink);border-bottom-color:var(--accent)}
 .hero{text-align:center;padding:18px 0 6px}
 .cta-grid{display:grid;gap:12px}
-.sr{position:absolute;left:-9999px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}   /* read aloud, never drawn: a clipped 1px box, never off-screen (2026-11-20) — the wordmark's name "HeartBank®" rides in it */
 .mark{font-weight:600}
 .btn[aria-disabled=true],.btn:disabled{opacity:.6;pointer-events:none}
 /* The heartbeat, verbatim from brand.333.eco/css/motion.css (two unequal beats, then rest: the morphology is the signature).
