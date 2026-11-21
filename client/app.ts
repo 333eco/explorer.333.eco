@@ -447,6 +447,17 @@ async function corpusPage() {
 }
 const sha256 = async (b: Uint8Array) => new Uint8Array(await crypto.subtle.digest("SHA-256", b as BufferSource));
 const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+/** Each authority's token on one manifest (`<manifest>.<authority>.tsr`, beside it), checked here against that authority's published roots,
+ *  the same ones the log's tokens are checked against. `ok` is undefined when the token couldn't be read (or there is none). */
+async function manifestTokens(url: string, manifest: Uint8Array) {
+    return Promise.all(Object.entries(((trust as any).tsaRoots ?? {}) as Record<string, string[]>).map(async ([name, roots]) => {
+        try {
+            const r = await fetch(`${url}.${name}.tsr`); if (!r.ok) return { name };
+            const got = await checkTimestamp(new Uint8Array(await r.arrayBuffer()), manifest, roots.map(unb64));
+            return { name, ok: !!got.ok, time: got.ok ? String(got.time instanceof Date ? got.time.toISOString() : got.time) : undefined };
+        } catch { return { name }; }
+    })) as Promise<{ name: string; ok?: boolean; time?: string }[]>;
+}
 /** Three checks that run here against the public repository. A failed fetch says "couldn't check", never "failed". */
 async function liveLegs(d: Doc, into: HTMLElement) {
     const put = (key: string, node: Node) => into.querySelector(`[data-leg="${key}"]`)?.replaceWith(node);
@@ -473,21 +484,23 @@ async function liveLegs(d: Doc, into: HTMLElement) {
             } catch { put("btc", leg(null, "Bitcoin", say("The proof can't be read right now, so this wasn't checked.", "មិនអាចអានភស្តុតាងបានឥឡូវនេះទេ ដូច្នេះនេះមិនត្រូវបានពិនិត្យទេ។"))); }
         })(),
         (async () => {
-            // The repository's manifests are dated, so the newest few can be read without listing anything.
-            const m = /^(https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/[^/]+\/)/.exec(d.source_url!);
-            const base = m?.[1], folder = base ? `${base.replace("raw.githubusercontent.com", "github.com").replace(/\/([^/]+)\/$/, "/tree/$1/")}timestamps/manifests` : "";
+            // The repository's manifests are dated, so the newest few can be read without listing anything. ⛔ The tick needs the manifest's
+            // OWN tokens, checked here (2026-11-20): it was given for the manifest's text alone, which no authority's signature was read for.
+            const m = /^(https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/[^/]+\/)(.+)$/.exec(d.source_url!);
+            const base = m?.[1], path = m?.[2], folder = base ? `${base.replace("raw.githubusercontent.com", "github.com").replace(/\/([^/]+)\/$/, "/tree/$1/")}timestamps/manifests` : "";
             if (!base) return put("tsa", h("span", {}));
+            const title = say("Timestamp authorities", "អាជ្ញាធរបោះត្រាពេលវេលា"), manifests = () => link(folder, say("The manifests", "បញ្ជី"));
             for (let back = 0; back < 10; back++) {
-                const day = new Date(Date.now() - back * 864e5 + 864e5).toISOString().slice(0, 10);
-                try {
-                    const r = await fetch(`${base}timestamps/manifests/${day}.sha256`);
-                    if (!r.ok) continue;
-                    const has = (await r.text()).includes(`${d.sha256}  `);
-                    return put("tsa", has ? leg(true, say("Timestamp authorities", "អាជ្ញាធរបោះត្រាពេលវេលា"), say(`In the ${day} manifest, which outside authorities sign. `, `នៅក្នុងបញ្ជី ${day} ដែលអាជ្ញាធរខាងក្រៅចុះហត្ថលេខា។ `), link(folder, say("The manifests", "បញ្ជី")))
-                        : leg(null, say("Timestamp authorities", "អាជ្ញាធរបោះត្រាពេលវេលា"), say(`Not in the ${day} manifest. A change joins the next one. `, `មិននៅក្នុងបញ្ជី ${day} ទេ។ ការផ្លាស់ប្តូរចូលក្នុងបញ្ជីបន្ទាប់។ `), link(folder, say("The manifests", "បញ្ជី"))));
-                } catch { /* try an older one */ }
+                const day = new Date(Date.now() - back * 864e5 + 864e5).toISOString().slice(0, 10), url = `${base}timestamps/manifests/${day}.sha256`;
+                let bytes: Uint8Array;
+                try { const r = await fetch(url); if (!r.ok) continue; bytes = new Uint8Array(await r.arrayBuffer()); } catch { continue; /* try an older one */ }
+                if (!text(bytes).split("\n").includes(`${d.sha256}  ${path}`)) return put("tsa", leg(null, title, say(`Not in the ${day} manifest. A change joins the next one. `, `មិននៅក្នុងបញ្ជី ${day} ទេ។ ការផ្លាស់ប្តូរចូលក្នុងបញ្ជីបន្ទាប់។ `), manifests()));
+                const tokens = await manifestTokens(url, bytes), signed = tokens.filter((t) => t.ok), first = signed.map((t) => t.time!).sort((a, b) => +new Date(a) - +new Date(b))[0];
+                return put("tsa", signed.length ? leg(true, title, say(`In the ${day} manifest, which ${signed.map((t) => t.name).join(", ")} signed no later than ${when(first)}. `, `នៅក្នុងបញ្ជី ${day} ដែល ${signed.map((t) => t.name).join(", ")} បានចុះហត្ថលេខា មិនយឺតជាង ${when(first)}។ `), manifests())
+                    : tokens.some((t) => t.ok === false) ? leg(false, title, say(`In the ${day} manifest, but its authorities' tokens don't verify. `, `នៅក្នុងបញ្ជី ${day} ប៉ុន្តែសញ្ញារបស់អាជ្ញាធររបស់វាមិនត្រឹមត្រូវទេ។ `), manifests())
+                    : leg(null, title, say(`Listed in the ${day} manifest. Its authorities' tokens couldn't be read just now, so this wasn't checked. `, `មាននៅក្នុងបញ្ជី ${day}។ មិនអាចអានសញ្ញារបស់អាជ្ញាធររបស់វាបានឥឡូវនេះទេ ដូច្នេះនេះមិនត្រូវបានពិនិត្យទេ។ `), manifests()));
             }
-            put("tsa", leg(null, say("Timestamp authorities", "អាជ្ញាធរបោះត្រាពេលវេលា"), say("No recent manifest could be read, so this wasn't checked. ", "មិនអាចអានបញ្ជីថ្មីៗបានទេ ដូច្នេះនេះមិនត្រូវបានពិនិត្យទេ។ "), link(folder, say("The manifests", "បញ្ជី"))));
+            put("tsa", leg(null, title, say("No recent manifest could be read, so this wasn't checked. ", "មិនអាចអានបញ្ជីថ្មីៗបានទេ ដូច្នេះនេះមិនត្រូវបានពិនិត្យទេ។ "), manifests()));
         })(),
     ]);
 }

@@ -27,7 +27,7 @@ try {
     for (let i = 0; i < 50 && !target; i++) { await sleep(200); try { target = (await (await fetch("http://127.0.0.1:9336/json")).json()).find((t) => t.type === "page"); } catch {} }
     const ws = new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((r) => { ws.onopen = r; });
-    let id = 0, tamperLedger = false, tamper = false, tamperBlock = false, githubOut = false, tamperDoc = false; const wait = new Map(), errors = [];
+    let id = 0, tamperLedger = false, tamper = false, tamperBlock = false, githubOut = false, tamperDoc = false, forge = null; const wait = new Map(), errors = [];
     const cdp = (method, params = {}) => new Promise((r) => { const n = ++id; wait.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
     ws.onmessage = async (m) => {
         const d = JSON.parse(m.data);
@@ -35,8 +35,10 @@ try {
         if (d.method === "Runtime.exceptionThrown") errors.push(d.params.exceptionDetails.exception?.description ?? d.params.exceptionDetails.text);
         if (d.method === "Log.entryAdded" && d.params.entry.level === "error" && !/analytics|cloudflareinsights|api\/track|favicon|raw\.githubusercontent\.com\/.*(timestamps\/manifests|\.r\d+\.ots)|api\.github\.com|mempool\.space|zenodo\.org|archive\.org|log\.333\.eco\/origin\/stamps/.test(d.params.entry.text + (d.params.entry.url ?? "")) && !tamper) errors.push(`${d.params.entry.text} ${d.params.entry.url ?? ""}`);
         if (d.method === "Fetch.requestPaused") {
-            const url = d.params.request.url;
-            if (tamperBlock && /mempool\.space\/api\/block\/[0-9a-f]+\/header/.test(url)) { // one changed byte in the block's merkle root
+            const url = d.params.request.url, forged = forge ? await forge(url) : undefined;
+            if (forged !== undefined) { // a check's own forged answer for one address ({ status, body }); every other request goes through
+                cdp("Fetch.fulfillRequest", { requestId: d.params.requestId, responseCode: forged.status ?? 200, responseHeaders: [{ name: "Access-Control-Allow-Origin", value: "*" }], body: Buffer.from(forged.body ?? "").toString("base64") });
+            } else if (tamperBlock && /mempool\.space\/api\/block\/[0-9a-f]+\/header/.test(url)) { // one changed byte in the block's merkle root
                 const hx = await (await fetch(url)).text(); const b = Buffer.from(hx.trim(), "hex"); b[40] ^= 1;
                 cdp("Fetch.fulfillRequest", { requestId: d.params.requestId, responseCode: 200, responseHeaders: [{ name: "Access-Control-Allow-Origin", value: "*" }], body: Buffer.from(b.toString("hex")).toString("base64") });
             } else if (tamperDoc && /raw\.githubusercontent\.com/.test(url)) {
@@ -191,6 +193,23 @@ try {
     await go("/corpus/first-letter-to-miss-aquarius"); await until(`[...document.querySelectorAll('main a')].some(a=>/Read it/.test(a.textContent))`, "a letter");
     must(await ev(`[...document.querySelectorAll('main a')].find(a=>/Read it/.test(a.textContent)).href==='https://missaquarius.org/letters/first.html'`), "a letter's Read it is one good address (the found bug: https://https//)");
     await go("/corpus/a-promise-that-cannot-grow"); await until(`[...document.querySelectorAll('main a')].some(a=>/Read it/.test(a.textContent))`, "a paper"); must(await ev(`[...document.querySelectorAll('main a')].find(a=>/Read it/.test(a.textContent)).href==='https://thonly.org/research/a-promise-that-cannot-grow'`), "CONTROL: a paper's address without a scheme still works");
+    {   // 2026-11-20 (the explorer's ticks, 1): "Timestamp authorities" is ticked only when the manifest's OWN tokens verify here. It was
+        // ticked on the manifest's text alone, read from raw.githubusercontent.com, with no token read. GitHub's API is refused here (this
+        // row doesn't use it) so the hourly limit is kept for the version checks below.
+        const slug = "a-promise-that-cannot-grow", row = `[...document.querySelectorAll('.ex-leg')].find(l=>l.querySelector('b')?.textContent==='Timestamp authorities')`;
+        const read = async (what) => { await go(`/corpus/${slug}`); await until(`${row} && !/Checking…/.test(${row}.innerText)`, what); return ev(`({ ok: !!${row}.querySelector('.ex-ok'), bad: !!${row}.querySelector('.ex-bad'), text: ${row}.innerText })`); };
+        const noApi = (url) => (/api\.github\.com/.test(url) ? { status: 403, body: "{}" } : undefined);
+        await cdp("Network.setCacheDisabled", { cacheDisabled: true });
+        await cdp("Fetch.enable", { patterns: [{ urlPattern: "*api.github.com*" }, { urlPattern: "*timestamps/manifests/*.tsr" }] });
+        forge = noApi; let got = await read("the authorities' row");
+        must(got.ok && /signed no later than/.test(got.text), `authorities: the manifest's own tokens are checked here, then ticked (${got.text.replace(/\s+/g, " ").slice(0, 150)})`);
+        forge = (url) => noApi(url) ?? (/\.tsr$/.test(url) ? { status: 404, body: "" } : undefined); got = await read("the authorities' row, no token");
+        must(!got.ok && !got.bad && /couldn.t be read/.test(got.text), "authorities CONTROL: with no token to read, no tick, and it says it wasn't checked");
+        forge = async (url) => { const m = /manifests\/(\d{4}-\d{2}-\d{2})\.sha256\.[a-z-]+\.tsr$/.exec(url); if (!m) return noApi(url); const r = await fetch(url.replace(m[1], "2026-10-07")); return { status: r.status, body: Buffer.from(await r.arrayBuffer()) }; };
+        got = await read("the authorities' row, another day's tokens");
+        must(!got.ok && got.bad, "authorities CONTROL: another day's genuine tokens fail out loud, and nothing is ticked");
+        forge = null; await cdp("Fetch.disable"); await cdp("Network.setCacheDisabled", { cacheDisabled: false });
+    }
     {   // A paper with many versions, against what its repository's files say (the sibling checkout), and an independent reading of the earliest block.
         const dir = new URL("../../../../TH/publications/defensive-publications/", import.meta.url).pathname, slug = "zero-point-game";
         const proofs = existsSync(dir) ? readdirSync(dir).filter((f) => f.startsWith(`${slug}.md.`) && f.endsWith(".ots")).length : 0;
