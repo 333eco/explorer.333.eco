@@ -8,6 +8,7 @@ import ledgerTrust from "./ledger-trust";
 import { matchWaiting, readWaiting as readWaitingFrom } from "./waiting";
 import { INVITE_HREF, SIGN_HREF, invitationFor, maySign } from "./invite";
 import { EMPTY, bundleEntries, decodeMemory, encodeMemory, extend, rootOf, type Edge, type Memory } from "./ledger-memory";
+import { heldStamp, type Held } from "./stamped";
 // @ts-expect-error the same
 import { canvasDecoder, hashFile, phashDistance } from "@333eco/origin-verify/media";
 // @ts-expect-error the same
@@ -788,7 +789,9 @@ interface LedgerRead { ok: boolean; why?: string; size: number; body: string; en
     /** ⭐ A662: the first entry read on THIS visit (0 = all of them); before it, what this device checked on `before.at`. */
     from: number; before: { size: number; at: string } | null;
     /** ⛔ A662: the ledger doesn't extend what this device checked before (`at`): shown as a failure, never overwritten. */
-    rewritten?: { size: number; at: string } }
+    rewritten?: { size: number; at: string };
+    /** The checked tree's root at a size: null past its end, undefined before this visit's first entry (a full read has it). */
+    rootAt: (size: number) => Uint8Array | null | undefined }
 let ledgerCache: LedgerRead | null = null;
 /** ⭐ A662 (2026-11-19; founder: "option 1"): what this device already checked, kept on this device only (ledger-memory.ts). */
 const MEMORY = "explorer.ledger.v1";
@@ -812,7 +815,7 @@ function hashIn(entries: Uint8Array[], edge: Edge): Promise<{ leaves: Uint8Array
 }
 async function readLedger(o: { full?: boolean } = {}): Promise<LedgerRead> {
     if (ledgerCache && !o.full) return ledgerCache;
-    const fail = (why: string, more: Partial<LedgerRead> = {}): LedgerRead => ({ ok: false, why, size: 0, body: "", entries: [], pub: [], placed: false, stamps: {}, from: 0, before: null, ...more });
+    const fail = (why: string, more: Partial<LedgerRead> = {}): LedgerRead => ({ ok: false, why, size: 0, body: "", entries: [], pub: [], placed: false, stamps: {}, from: 0, before: null, rootAt: () => null, ...more });
     try {
         const note = await ledgerGet("checkpoint");
         if (!note) return fail(say("No checkpoint has been published yet.", "មិនទាន់មាន checkpoint បោះពុម្ពនៅឡើយទេ។"));
@@ -856,7 +859,8 @@ async function readLedger(o: { full?: boolean } = {}): Promise<LedgerRead> {
         const keep = Math.floor(cp.size / 256) * 256;
         // ⛔ Only an ordinary visit remembers: a full read (a rewrite's check, an old receipt) never replaces what this device remembers.
         if (keep > 0 && !o.full) remember({ edge: extend(mem?.edge ?? EMPTY, leaves.slice(0, keep - from)), pub: pub.filter((x) => x.index < keep), at: new Date().toISOString() });
-        const read: LedgerRead = { ok: true, size: cp.size, body: cp.body, entries, pub, placed, stamps: idx ? JSON.parse(text(idx)) : {}, from, before: mem ? { size: mem.edge.size, at: mem.at } : null };
+        const start = mem?.edge ?? EMPTY, rootAt = (x: number) => (x > cp.size ? null : x === cp.size ? cp.root : x >= from ? rootOf(extend(start, leaves.slice(0, x - from))) : undefined);
+        const read: LedgerRead = { ok: true, size: cp.size, body: cp.body, entries, pub, placed, stamps: idx ? JSON.parse(text(idx)) : {}, from, before: mem ? { size: mem.edge.size, at: mem.at } : null, rootAt };
         if (!o.full) ledgerCache = read;
         return read;
     } catch (e) { return fail((e as Error).message); }
@@ -883,26 +887,38 @@ async function checkReceipt(raw: string, l: LedgerRead): Promise<Node> {
 async function ledgerStamps(l: LedgerRead, into: HTMLElement) {
     const s = Math.max(0, ...(l.stamps.tsa ?? []), ...(l.stamps.ots ?? []));
     if (!s) return into.replaceChildren(leg(null, say("Not stamped yet", "មិនទាន់បោះត្រា"), say("The ledger is stamped once a day.", "បញ្ជីត្រូវបានបោះត្រាម្តងក្នុងមួយថ្ងៃ។")));
-    const note = await ledgerGet(`checkpoints/${s}`), body = note ? enc(checkpointBody(text(note))) : null, rows: Node[] = [];
-    if (!body) return into.replaceChildren(leg(false, say("The stamped checkpoint can't be read", "មិនអាចអាន checkpoint ដែលបានបោះត្រាបានទេ"), ""));
-    for (const [name, roots] of Object.entries((trust as any).tsaRoots ?? {})) {
+    // ⛔ 2026-11-20 (the explorer's ticks): a clock is ticked only over the ledger's OWN signed checkpoint at exactly the stamped size, whose
+    //   root is the root of the ledger checked above at that size (client/stamped.ts). stamps/index.json is unsigned: it only says where to look.
+    //   It was ticked over whatever text checkpoints/<s> served. A stamp from before this visit's first entry needs every entry read again.
+    const rootAt = async (x: number) => { const r = l.rootAt(x); if (r !== undefined) return r; const all = await readLedger({ full: true }); if (!all.ok) throw new Error(all.why); return all.rootAt(x) ?? null; };
+    const held = async (x: number) => heldStamp(await ledgerGet(`checkpoints/${x}`).then((b) => (b ? text(b) : null)).catch(() => null), x, ledgerTrust, rootAt);
+    const notHeld = (hs: Held & { ok: false }, ...at: Kid[]) => hs.why === "unread" ? leg(false, say("The stamped checkpoint can't be read", "មិនអាចអាន checkpoint ដែលបានបោះត្រាបានទេ"), ...at)
+        : leg(false, say("The stamped checkpoint didn't pass its check", "checkpoint ដែលបានបោះត្រាមិនបានឆ្លងការពិនិត្យទេ"), ...at,
+            hs.why === "size" ? say(`It holds ${count(hs.size, "entry", "entries")}, not ${n(s)}.`, `វាមាន ${n(hs.size)} ធាតុ មិនមែន ${n(s)} ទេ។`)
+            : hs.why === "beyond" ? say("It is longer than the ledger checked above.", "វាវែងជាងបញ្ជីដែលបានពិនិត្យខាងលើ។")
+            : hs.why === "root" ? say("Its root isn't the root of the ledger checked above, at that size.", "ឫសរបស់វាមិនមែនជាឫសនៃបញ្ជីដែលបានពិនិត្យខាងលើ នៅទំហំនោះទេ។")
+            : say("It isn't the ledger's own signed checkpoint.", "វាមិនមែនជា checkpoint ដែលបញ្ជីបានចុះហត្ថលេខាដោយខ្លួនឯងទេ។"));
+    const hs = await held(s), rows: Node[] = [];
+    if (!hs.ok) rows.push(notHeld(hs));
+    else for (const [name, roots] of Object.entries((trust as any).tsaRoots ?? {})) {
         const tsr = await ledgerGet(`stamps/${s}.${name}.tsr`);
         if (!tsr) continue;
-        const got = await checkTimestamp(tsr, body, (roots as string[]).map(unb64)).catch(() => ({ ok: false }));
+        const got = await checkTimestamp(tsr, hs.body, (roots as string[]).map(unb64)).catch(() => ({ ok: false }));
         rows.push(got.ok ? leg(true, say(`${name} signed it`, `${name} បានចុះហត្ថលេខា`), say(`No later than ${when(got.time)}`, `មិនយឺតជាង ${when(got.time)}`)) : leg(false, say(`${name}'s token does not verify`, `សញ្ញារបស់ ${name} មិនត្រឹមត្រូវទេ`), ""));
     }
     // Bitcoin from the newest state that HAS a proof, and only a proof the index lists (founder 2026-11-12, "fix 1792.ots": the newest
     // state had its authorities' tokens and no Bitcoin proof, so this asked for a file that doesn't exist and the row vanished).
     const otsSizes = l.stamps.ots ?? [], o = otsSizes.includes(s) ? s : Math.max(0, ...otsSizes);
-    const ots = o ? await ledgerGet(`stamps/${o}.ots`) : null, oBody = o === s ? body : ots ? await ledgerGet(`checkpoints/${o}`).then((b) => (b ? enc(checkpointBody(text(b))) : null)) : null;
-    if (ots && oBody) {
-        const a = await anchorOf(ots, new Uint8Array(await crypto.subtle.digest("SHA-256", oBody)));
-        const at = o === s ? "" : say(`At ${count(o, "entry", "entries")}: `, `នៅ ${n(o)} ធាតុ៖ `);
+    const ots = o ? await ledgerGet(`stamps/${o}.ots`) : null, ho = o === s ? hs : ots ? await held(o) : null;
+    const at = o === s ? "" : say(`At ${count(o, "entry", "entries")}: `, `នៅ ${n(o)} ធាតុ៖ `);
+    if (ots && ho?.ok) {
+        const a = await anchorOf(ots, new Uint8Array(await crypto.subtle.digest("SHA-256", ho.body as BufferSource)));
         rows.push(a.height !== undefined ? leg(a.checked, "Bitcoin", at, blockLink(a.height), a.time ? say(` · no later than ${when(a.time)}`, ` · មិនយឺតជាង ${when(a.time)}`) : "")
             : leg(null, "Bitcoin", at, say("Waiting for a block. This takes a few hours.", "កំពុងរង់ចាំប្លុក។ វាចំណាយពេលពីរបីម៉ោង។")));
         if (o !== s) rows.push(h("p", { class: "fine" }, say(`The state at ${count(s, "entry", "entries")} gets its Bitcoin proof at the next close.`, `ស្ថានភាពនៅ ${n(s)} ធាតុ ទទួលបានភស្តុតាង Bitcoin នៅការបិទបន្ទាប់។`)));
-    } else rows.push(leg(null, "Bitcoin", say("The ledger's first Bitcoin proof comes with its next close.", "ភស្តុតាង Bitcoin ដំបូងរបស់បញ្ជីមកជាមួយការបិទបន្ទាប់។")));
-    into.replaceChildren(h("p", {}, say(`The ledger's state at ${count(s, "entry", "entries")} was timestamped outside our control:`, `ស្ថានភាពនៃបញ្ជីនៅ ${n(s)} ធាតុ ត្រូវបានបោះត្រាពេលវេលានៅក្រៅការគ្រប់គ្រងរបស់យើង៖`)), ...rows);
+    } else if (ots && ho && !ho.ok) { if (o !== s) rows.push(notHeld(ho, at)); } // the same checkpoint as the clocks' is said once, above
+    else rows.push(leg(null, "Bitcoin", say("The ledger's first Bitcoin proof comes with its next close.", "ភស្តុតាង Bitcoin ដំបូងរបស់បញ្ជីមកជាមួយការបិទបន្ទាប់។")));
+    into.replaceChildren(...(hs.ok ? [h("p", {}, say(`The ledger's state at ${count(s, "entry", "entries")} was timestamped outside our control:`, `ស្ថានភាពនៃបញ្ជីនៅ ${n(s)} ធាតុ ត្រូវបានបោះត្រាពេលវេលានៅក្រៅការគ្រប់គ្រងរបស់យើង៖`))] : []), ...rows);
 }
 async function ledgerPage() {
     const title = head(say("Gratitude ledger", "បញ្ជីការដឹងគុណ"), say("Thanks are private. This page shows only the proofs that the ledger is whole and has never been rewritten, and every check runs in your browser.", "ការអរគុណគឺជាឯកជន។ ទំព័រនេះបង្ហាញតែភស្តុតាងថាបញ្ជីនៅពេញលេញ ហើយមិនដែលត្រូវបានសរសេរឡើងវិញ ហើយការពិនិត្យទាំងអស់ដំណើរការក្នុងកម្មវិធីរុករករបស់អ្នក។"));

@@ -169,6 +169,24 @@ try {
         await until(`/root rebuilt here from all/.test(document.querySelector('main').innerText)`, "every entry checked again");
         must(/Season 1/.test(await body()), "ledger: its button forgets the memory and checks every entry again");
         await size(1440, 900, false); await go("/ledger"); await until(`/Its signature/.test(document.querySelector('main').innerText)`, "the ledger on a desktop"); await shot("21-ledger-desktop"); await size(390, 844, true);
+        {   // 2026-11-20 (the explorer's ticks, 2): an outside clock is ticked only when the stamped checkpoint is the ledger's own signed state
+            // at exactly the stamped size, with the audited ledger's root there (client/stamped.ts; scripts/check-stamped.mjs holds a root that
+            // differs, which the live ledger can't). It was ticked over whatever text checkpoints/<s> served, s read from an unsigned index.
+            const idx = await (await fetch("https://log.333.eco/ledger/stamps/index.json")).json(), s = Math.max(...idx.tsa), prev = Math.max(...idx.tsa.filter((x) => x < s));
+            const note = await (await fetch(`https://log.333.eco/ledger/checkpoints/${s}`)).text(), forgedNote = note.replace(/^(— log\.333\.eco\/ledger \S{20})(\S)/m, (_, a, c) => a + (c === "A" ? "B" : "A"));
+            const clocks = `[...document.querySelectorAll('.card')].find(c=>c.querySelector('h2')?.textContent==='Outside clocks')`;
+            const read = async (what) => { await go("/ledger"); await until(`${clocks} && !/Checking the outside clocks/.test(${clocks}.innerText)`, what); return ev(`({ ticks: ${clocks}.querySelectorAll('.ex-ok').length, text: ${clocks}.innerText })`); };
+            await cdp("Network.setCacheDisabled", { cacheDisabled: true });
+            await cdp("Fetch.enable", { patterns: [{ urlPattern: "*log.333.eco/ledger/checkpoints/*" }, { urlPattern: "*log.333.eco/ledger/stamps/*" }] });
+            forge = (url) => (url.endsWith(`/ledger/checkpoints/${s}`) ? { body: forgedNote } : undefined);
+            let got = await read("the clocks, a checkpoint the ledger didn't sign");
+            must(forgedNote !== note && got.ticks === 0 && /didn.t pass its check/.test(got.text), `ledger CONTROL: a stamped checkpoint the ledger didn't sign gets no tick (${got.ticks})`);
+            forge = async (url) => { if (!new RegExp(`/ledger/(checkpoints/${s}$|stamps/${s}\\.)`).test(url)) return undefined; const r = await fetch(url.replace(`/${s}`, `/${prev}`)); return { status: r.status, body: Buffer.from(await r.arrayBuffer()) }; };
+            got = await read("the clocks, another state's checkpoint and tokens");
+            must(got.ticks === 0 && /didn.t pass its check/.test(got.text), `ledger CONTROL: the state at ${prev} with its own genuine tokens, served as the state at ${s}, gets no tick (${got.ticks})`);
+            forge = null; await cdp("Fetch.disable"); await cdp("Network.setCacheDisabled", { cacheDisabled: false });
+            got = await read("the clocks"); must(got.ticks >= 3 && !/didn.t pass/.test(got.text), `ledger: the real stamps are ticked (${got.ticks})`);
+        }
         await ev("localStorage.removeItem('explorer.ledger.v1')");   // A662: the tamper control tests a FIRST visit (a return visit never reads that tile)
         await cdp("Fetch.enable", { patterns: [{ urlPattern: "*log.333.eco/ledger*" }] }); tamperLedger = true;
         await go("/ledger"); await until(`/didn.t pass its check|signature, its tree/.test(document.querySelector('main').innerText)`, "the tampered ledger");
