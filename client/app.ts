@@ -369,6 +369,32 @@ async function readDocs() {
     docs = ((await r.json()).documents as Doc[]).sort((a, b) => dayOf(b.date).localeCompare(dayOf(a.date)) || a.title.localeCompare(b.title));
     return docs;
 }
+// ⭐ HELD PAPERS (founder 2026-11-20: "yes" — the corpus page "seems to be missing the latest papers"). The index serves a paper only
+//   after its first archive deposit; until then it is HELD (`corpus.333.eco/holds.json`), and the index's public manifest lists it.
+//   They are timestamped already, so they sit in the one list by date (the newest at the top), marked "Not yet archived": title, kind and date from the paper's own front matter in the public
+//   repository, a link to its page, and "Bitcoin" only if its proof file loads. ⛔ The hold's reason is never shown here (it is the
+//   institution's workflow, not the paper's). A failed read shows no group — never a claim that there is none.
+const MANIFEST = "https://corpus.333.eco/manifest.json";
+interface Held { slug: string; title: string; genre: string; date: string; page: string | null; ots: boolean }
+let held: Held[] | null = null;
+async function readHeld(list: Doc[]): Promise<Held[]> {
+    if (held) return held;
+    const r = await fetch(MANIFEST); if (!r.ok) throw new Error(String(r.status));
+    const bases = new Map<string, string>();
+    for (const d of list) if (d.source_url && d.source_url.endsWith(d.path)) bases.set(d.repo, d.source_url.slice(0, d.source_url.length - d.path.length));
+    const rows = ((await r.json()).held_documents ?? []) as { slug: string; repo: string; path: string }[];
+    const out = await Promise.all(rows.map(async (x): Promise<Held | null> => {
+        const base = bases.get(x.repo); if (!base) return null;
+        const src = base + x.path, res = await fetch(src); if (!res.ok) return null;
+        const fm = /^---\n([\s\S]*?)\n---/.exec(await res.text())?.[1] ?? "";
+        const get = (k: string) => (new RegExp(`^${k}:\\s*(.*)$`, "m").exec(fm)?.[1] ?? "").trim().replace(/^"(.*)"$/, "$1");
+        const venue = get("venue").split(/\s/)[0];
+        const ots = await fetch(`${src}.ots`).then((o) => o.ok).catch(() => false);
+        return { slug: x.slug, title: get("title") || x.slug, genre: x.path.split("/")[0], date: get("date"), page: /^[a-z0-9.-]+\.[a-z]+\//.test(venue) ? `https://${venue}` : null, ots };
+    }));
+    held = (out.filter(Boolean) as Held[]).sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
+    return held;
+}
 const cantRead = (title: Node) => view.replaceChildren(title, card(leg(false, say("The corpus index can't be read right now", "មិនអាចអានសន្ទស្សន៍ឯកសារបានឥឡូវនេះទេ"), say("Try again in a little while.", "សូមសាកល្បងម្តងទៀតបន្តិចក្រោយ។"))));
 async function corpusPage() {
     const title = head(say("Corpus", "សារពើភ័ណ្ឌឯកសារ"), say("Every paper and essay is timestamped when its text changes, so anyone can check that today's text is the text that was published.", "ឯកសារ និងអត្ថបទនីមួយៗត្រូវបានបោះត្រាពេលវេលានៅពេលអត្ថបទរបស់វាផ្លាស់ប្តូរ ដូច្នេះអ្នកណាក៏អាចពិនិត្យថាអត្ថបទថ្ងៃនេះគឺជាអត្ថបទដែលបានបោះពុម្ព។"));
@@ -376,19 +402,26 @@ async function corpusPage() {
     let list: Doc[];
     try { list = await readDocs(); } catch { return cantRead(title); }
     if (route().name !== "corpus") return;
-    let kind = kindNow();
+    let kind = kindNow(), heldList: Held[] = held ?? [];
     const kinds = h("div", { class: "ex-kinds", role: "group", "aria-label": say("Kind of document", "ប្រភេទឯកសារ") });
     const box = h("div", {}), input = h("input", { type: "search", value: filter, "aria-label": say("Search by title", "ស្វែងរកតាមចំណងជើង"), placeholder: say("Search by title", "ស្វែងរកតាមចំណងជើង"), oninput: (e: Event) => { filter = (e.target as HTMLInputElement).value; shownDocs = PAGE; fill(); } });
     const fill = () => {
         const genres = KINDS.find((x) => x[0] === kind)![3], kept = genres.length ? list.filter((d) => genres.includes(d.genre)) : list;
         const q = filter.trim().toLowerCase(), hits = q ? kept.filter((d) => `${d.title} ${titleLines(d)[1] ?? ""}`.replace(/\*/g, "").toLowerCase().includes(q) || d.slug.includes(q) || d.sha256.startsWith(q.replace(/\s/g, ""))) : kept;
         kinds.replaceChildren(...KINDS.map(([k, en, km]) => h("button", { type: "button", class: k === kind ? "pill on" : "pill", "aria-pressed": k === kind ? "true" : "false", onclick: () => { kind = k; shownDocs = PAGE; history.replaceState(null, "", k ? `/corpus?kind=${k}` : "/corpus"); fill(); } }, say(en, km))));
-        box.replaceChildren(...([h("p", { class: "fine ex-count" }, say(hits.length === 1 ? "1 document" : `${n(hits.length)} documents`, `${n(hits.length)} ឯកសារ`)),
-            ...hits.slice(0, shownDocs).map((d) => h("a", { class: "card ex-doc", href: `/corpus/${d.slug}` }, ...cardTitle(d), h("span", {}, `${genre(d.genre)} · ${date(d.date)} · `, h("span", { class: "ex-mono" }, short(d.sha256))),
-                h("span", { class: "ex-chips" }, d.opentimestamps ? h("span", { class: "pill on" }, "Bitcoin") : null, d.doi ? h("span", { class: "pill on" }, "DOI") : null))),
-            hits.length > shownDocs ? h("button", { type: "button", class: "btn ghost ex-more", onclick: () => { shownDocs += PAGE; fill(); } }, say("Show more", "បង្ហាញបន្ថែម")) : null].filter(Boolean) as Node[]));
+        const heldHits = heldList.filter((x) => (!genres.length || genres.includes(x.genre)) && (!q || x.title.toLowerCase().includes(q) || x.slug.includes(q)));
+        const all: (Doc | Held)[] = [...hits, ...heldHits].sort((a, b) => dayOf(b.date).localeCompare(dayOf(a.date)));
+        box.replaceChildren(...([h("p", { class: "fine ex-count" }, say(all.length === 1 ? "1 document" : `${n(all.length)} documents`, `${n(all.length)} ឯកសារ`)),
+            heldHits.length ? h("p", { class: "fine" }, say(`${n(heldHits.length)} of them are timestamped but not yet archived: each joins the index, with its archive copy, later.`, `${n(heldHits.length)} ក្នុងចំណោមនោះត្រូវបានបោះត្រាពេលវេលា ប៉ុន្តែមិនទាន់ដាក់បណ្ណសារ៖ នីមួយៗនឹងចូលសន្ទស្សន៍ ជាមួយច្បាប់ចម្លងបណ្ណសាររបស់វា នៅពេលក្រោយ។`)) : null,
+            ...all.slice(0, shownDocs).map((d) => "sha256" in d
+                ? h("a", { class: "card ex-doc", href: `/corpus/${d.slug}` }, ...cardTitle(d), h("span", {}, `${genre(d.genre)} · ${date(d.date)} · `, h("span", { class: "ex-mono" }, short(d.sha256))),
+                    h("span", { class: "ex-chips" }, d.opentimestamps ? h("span", { class: "pill on" }, "Bitcoin") : null, d.doi ? h("span", { class: "pill on" }, "DOI") : null))
+                : h("a", { class: "card ex-doc", href: d.page ?? "/corpus", rel: "noopener" }, h("b", {}, d.title), h("span", {}, `${genre(d.genre)} · ${date(d.date)}`),
+                    h("span", { class: "ex-chips" }, d.ots ? h("span", { class: "pill on" }, "Bitcoin") : null, h("span", { class: "pill" }, say("Not yet archived", "មិនទាន់ដាក់បណ្ណសារ"))))),
+            all.length > shownDocs ? h("button", { type: "button", class: "btn ghost ex-more", onclick: () => { shownDocs += PAGE; fill(); } }, say("Show more", "បង្ហាញបន្ថែម")) : null].filter(Boolean) as Node[]));
     };
     fill();
+    if (!held) void readHeld(list).then((x) => { heldList = x; if (route().name === "corpus") fill(); }).catch(() => {});
     view.replaceChildren(title, kinds, h("form", { class: "ex-search", role: "search", onsubmit: (e: Event) => e.preventDefault() }, input), box);
 }
 const sha256 = async (b: Uint8Array) => new Uint8Array(await crypto.subtle.digest("SHA-256", b as BufferSource));
