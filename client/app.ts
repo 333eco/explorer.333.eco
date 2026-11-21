@@ -866,7 +866,7 @@ async function ledgerPage() {
 }
 
 /* ─────────────── Pages ─────────────── */
-function route(): { name: "origin" } | { name: "bmail" } | { name: "ledger" } | { name: "record"; index: number } | { name: "proof"; index: number } | { name: "view"; src: string; entry: number | null } | { name: "corpus" } | { name: "doc"; slug: string } {
+function route(): { name: "origin" } | { name: "bmail" } | { name: "ledger" } | { name: "record"; index: number } | { name: "proof"; index: number } | { name: "view"; src: string; entry: number | null } | { name: "corpus" } | { name: "doc"; slug: string } | { name: "unknown" } {
     const p = location.pathname.replace(/\/+$/, "");
     if (p === "/b-mail") return { name: "bmail" };
     const rec = /^\/origin\/(\d{1,12})$/.exec(p), doc = /^\/corpus\/([a-z0-9-]+)$/.exec(p);
@@ -876,13 +876,19 @@ function route(): { name: "origin" } | { name: "bmail" } | { name: "ledger" } | 
     if (rec) return { name: "record", index: Number(rec[1]) };
     if (doc) return { name: "doc", slug: doc[1] };
     if (p === "/ledger") return { name: "ledger" };
-    return p === "/corpus" ? { name: "corpus" } : { name: "origin" };
+    if (p === "/corpus") return { name: "corpus" };
+    // 2026-11-20: only "/" and "/origin" are the records. Any other address used to paint the records too, so a mistyped link looked like
+    // a page and the Safari floor run could not tell /origin from an unknown address. It now says it cannot open that address.
+    return p === "" || p === "/origin" ? { name: "origin" } : { name: "unknown" };
 }
+// Words already used on this site (viewPage, recordPage), so no new translation is introduced.
+const CANT_OPEN = () => say("This page can't open that address", "ទំព័រនេះមិនអាចបើកអាសយដ្ឋាននោះបានទេ");
+async function unknownPage() { view.replaceChildren(head(CANT_OPEN()), card(h("p", {}, link("/origin", say("All records", "កំណត់ត្រាទាំងអស់"))))); }
 function paint() {
-    const r = route(), area = r.name === "ledger" ? "ledger" : r.name === "corpus" || r.name === "doc" || (r.name === "view" && !r.src.startsWith(LOG)) ? "corpus" : "origin";
+    const r = route(), area = r.name === "unknown" ? "" : r.name === "ledger" ? "ledger" : r.name === "corpus" || r.name === "doc" || (r.name === "view" && !r.src.startsWith(LOG)) ? "corpus" : "origin";
     document.querySelectorAll<HTMLElement>("[data-nav]").forEach((a) => { if (a.dataset.nav === area) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
-    document.title = r.name === "ledger" ? `${say("Gratitude ledger", "បញ្ជីការដឹងគុណ")} · explorer.333.eco` : `${r.name === "view" ? say("A source file", "ឯកសារប្រភព") : r.name === "proof" ? say(`Proof of record #${r.index}`, `ភស្តុតាងនៃកំណត់ត្រា #${r.index}`) : r.name === "record" ? say(`Record #${r.index}`, `កំណត់ត្រា #${r.index}`) : area === "corpus" ? say("Corpus", "សារពើភ័ណ្ឌឯកសារ") : say("Records", "កំណត់ត្រា")} · B-Explorer`;
-    const run = r.name === "bmail" ? bmailPage() : r.name === "ledger" ? ledgerPage() : r.name === "view" ? viewPage(r.src, r.entry) : r.name === "proof" ? proofPage(r.index) : r.name === "record" ? recordPage(r.index) : r.name === "doc" ? docPage(r.slug) : r.name === "corpus" ? corpusPage() : originPage();
+    document.title = r.name === "unknown" ? `${CANT_OPEN()} · B-Explorer` : r.name === "ledger" ? `${say("Gratitude ledger", "បញ្ជីការដឹងគុណ")} · explorer.333.eco` : `${r.name === "view" ? say("A source file", "ឯកសារប្រភព") : r.name === "proof" ? say(`Proof of record #${r.index}`, `ភស្តុតាងនៃកំណត់ត្រា #${r.index}`) : r.name === "record" ? say(`Record #${r.index}`, `កំណត់ត្រា #${r.index}`) : area === "corpus" ? say("Corpus", "សារពើភ័ណ្ឌឯកសារ") : say("Records", "កំណត់ត្រា")} · B-Explorer`;
+    const run = r.name === "unknown" ? unknownPage() : r.name === "bmail" ? bmailPage() : r.name === "ledger" ? ledgerPage() : r.name === "view" ? viewPage(r.src, r.entry) : r.name === "proof" ? proofPage(r.index) : r.name === "record" ? recordPage(r.index) : r.name === "doc" ? docPage(r.slug) : r.name === "corpus" ? corpusPage() : originPage();
     run.catch((e) => view.replaceChildren(card(leg(false, say("That didn't work", "វាមិនដំណើរការទេ"), String(e.message ?? e)))));
 }
 function nav(path: string) { history.pushState(null, "", path); window.scrollTo(0, 0); found = null; searchNote = ""; paint(); }
