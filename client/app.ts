@@ -269,7 +269,7 @@ async function bmailPage() {
     let entry: any = l.entries.find((e) => e.t === "record" && e.claim?.sha256 === sha), waiting = false;
     if (!entry) { entry = (await readWaiting(l.size)).find((e) => e.t === "record" && e.claim?.sha256 === sha); waiting = !!entry; }
     const rows: Kid[] = [];
-    let gone: string | undefined;
+    let gone: string | undefined, signedAs = false; // "Signed as" is shown only when the signer check below ran here and passed
     if (!entry) rows.push(leg(false, say("No record of this exact message", "គ្មានកំណត់ត្រានៃសារពិតប្រាកដនេះទេ"), say("It was never signed, or it was changed after signing.", "វាមិនដែលត្រូវបានចុះហត្ថលេខា ឬត្រូវបានផ្លាស់ប្តូរបន្ទាប់ពីចុះហត្ថលេខា។")));
     else {
         rows.push(leg(true, say(`This exact message is record #${n(entry.index)}`, `សារពិតប្រាកដនេះគឺជាកំណត់ត្រា #${n(entry.index)}`),
@@ -277,12 +277,15 @@ async function bmailPage() {
         gone = withdrawnOf(l).get(entry.index);
         if (gone) rows.push(leg(false, say(`The signer withdrew it on ${date(gone)}`, `អ្នកចុះហត្ថលេខាបានដកវានៅ ${date(gone)}`), ""));
         const at = /^name: (@[A-Za-z0-9._-]{1,64})$/m.exec(text.slice(0, text.indexOf("\n\n") + 1))?.[1];
-        if (at && proof?.index === entry.index && proof.opening) { const sg = await signerOf(entry, proof.opening, at); rows.push(leg(sg.ok, sg.text, sg.fine ?? "")); }
+        if (at && proof?.index === entry.index && proof.opening) { const sg = await signerOf(entry, proof.opening, at); rows.push(leg(sg.ok, sg.text, sg.fine ?? "")); signedAs = sg.ok === true; }
+        // 2026-11-20 (A597): with no proof in the link the signer was NOT checked, and the `name:` line is only the sender's words: say so, in
+        // words this site already uses, rather than skip the row in silence (anyone can sign `name: @someone` with their own passkey).
+        else if (at) rows.push(leg(false, say(`Not confirmed against ${at}'s page`, `មិនបានបញ្ជាក់ជាមួយទំព័ររបស់ ${at} ទេ`), say("Open it from the emblem in the mail.", "សូមបើកវាពីនិមិត្តសញ្ញានៅក្នុងសំបុត្រ។")));
     }
     // The message as it was signed: who it was from and to, the subject, each attachment by its fingerprint, then the body.
     const cut = text.indexOf("\n\n"), lines = text.slice(10, cut).split("\n"), body = text.slice(cut + 2);
     const LABEL: Record<string, [string, string]> = { from: ["From", "ពី"], to: ["To", "ទៅ"], cc: ["Cc", "Cc"], subject: ["Subject", "ប្រធានបទ"], name: ["Signed as", "បានចុះហត្ថលេខាជា"], attachment: ["Attachment", "ឯកសារភ្ជាប់"] };
-    const kv = lines.map((x) => /^([a-z]+): (.*)$/.exec(x)).filter((m): m is RegExpExecArray => !!m && m[1] in LABEL)
+    const kv = lines.map((x) => /^([a-z]+): (.*)$/.exec(x)).filter((m): m is RegExpExecArray => !!m && m[1] in LABEL && (m[1] !== "name" || signedAs))
         .flatMap((m) => [h("dt", {}, LABEL[m[1]][isKm() ? 1 : 0]), h("dd", {}, m[1] === "attachment" ? m[2].replace(/^([0-9a-f]{12})[0-9a-f]+ /, "$1… ") : m[2])]);
     if (route().name !== "bmail") return;
     // The invitation, stated once, on this page and never in the mail (§b-mail-viral-loop; invite.ts says when it may show).

@@ -82,6 +82,13 @@ try {
         must(await ev(`document.title!=='Records · B-Explorer'`), "and its title is not the records'");
         await go("/origin"); await until(`/all checked/.test(document.querySelector('main').innerText)`, "the records again"); // the checks below read the records page
     }
+    {   // 2026-11-20 (A597, the explorer review): a B-Mail's own `name:` line is the SENDER's words. It must never read "Signed as" unless
+        // the signer check ran here and passed; otherwise anyone could sign `name: @someone` with their own passkey and be shown as them.
+        const m = Buffer.from("b-mail/v1\nfrom: A <a@x.test>\nto: b@x.test\nname: @sokha.keo\nsubject: never signed\n\nHello.\n").toString("base64url");
+        await go(`/b-mail#m=${m}`); await until(`/No record of this exact message/.test(document.querySelector('main').innerText)`, "an unsigned B-Mail (the name)");
+        must(!/Signed as/.test(await body()), "a name nobody checked is never shown as 'Signed as'");
+        await go("/origin"); await until(`/all checked/.test(document.querySelector('main').innerText)`, "the records after the B-Mail");
+    }
     must(await ev(`[...document.querySelectorAll('.ex-ok')].every(b=>b.closest('.ex-leg').querySelector('a[href]'))`), "every ticked row on the records page links its source");
     must(await ev(`[...document.querySelectorAll('main a')].some(a=>a.href==='https://developers.333.eco/verify#tree')`), "the records page links how the log holds together");
     await ev(`document.querySelector('table a').click()`); await until(`/Checked in your browser/.test(document.querySelector('main').innerText)`, "the record");
