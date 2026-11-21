@@ -118,8 +118,30 @@ try {
         let otsHref = ots;
         if (!otsHref) { await go("/origin/0"); await until(`/Checked in your browser/.test(document.querySelector('main').innerText)`, "record 0");
             otsHref = (await ev(`[...document.querySelectorAll('.ex-leg a')].filter(a=>/Source/.test(a.textContent)).map(a=>a.pathname+a.search)`)).find((x) => /\.ots/.test(decodeURIComponent(x))); }
-        page = await open(otsHref); await until(`/Block \\d|Still waiting/.test(document.querySelector("main").innerText)`, "the proof's state", 30000); page = await body(); // a waiting proof asks three calendars first must((/Block \d/.test(page) || /Still waiting/.test(page)) && /It covers/.test(page), "a .ots reads as what it covers and its block (or that it waits for one: the newest record's proof takes a few hours)"); await shot("13-ots");
+        page = await open(otsHref); await until(`/Block \\d|Still waiting/.test(document.querySelector("main").innerText)`, "the proof's state", 30000); page = await body(); must((/Block \d/.test(page) || /Still waiting/.test(page)) && /It covers/.test(page), "a .ots reads as what it covers and its block (or that it waits for one: the newest record's proof takes a few hours)"); await shot("13-ots"); // a waiting proof asks three calendars first. ⚠️ Until 2026-11-20 this check sat inside that comment and never ran.
         page = await open(tile); must(/Entry #/.test(page) && /"claim"|"t":/.test(page) && await ev(`!!document.querySelector('.ex-first details[open]')`), "a tile reads as its entries, this record's opened"); await shot("14-tile");
+        {   // 2026-11-20 (the explorer's ticks, 4): what a proof file "covers" is CHECKED before anything is ticked: a .tsr's checkpoint by the
+            // log's signature and its size, a .ots's fingerprint against the hash of what it covers. A claim taken from the address says
+            // "It says it covers". It was taken from the address, and ticked.
+            const tsrUrl = new URLSearchParams(tsr.split("?")[1]).get("src"), at = /stamps\/(\d+)\./.exec(tsrUrl)[1];
+            const note = await (await fetch(`https://log.333.eco/origin/checkpoints/${at}`)).text(), forgedNote = note.replace(/^(— log\.333\.eco\/origin \S{20})(\S)/m, (_, a, c) => a + (c === "A" ? "B" : "A"));
+            const idx = await (await fetch("https://log.333.eco/origin/stamps/index.json")).json(), a = idx.ots.at(-1), b = idx.ots[0];
+            const ownDoc = "https://raw.githubusercontent.com/thonly/publications/main/defensive-publications/zero-point-game.md.ots";
+            const otherOts = Buffer.from(await (await fetch(`https://log.333.eco/origin/stamps/${b}.ots`)).arrayBuffer()), otherDoc = Buffer.from(await (await fetch("https://raw.githubusercontent.com/thonly/publications/main/defensive-publications/a-promise-that-cannot-grow.md.r1.ots")).arrayBuffer());
+            const proofState = async (href) => { await open(href); await until(`/Block \\d|Still waiting/.test(document.querySelector("main").innerText)`, href); return { page: await body(), ticks: await ev(`document.querySelectorAll('.ex-ok').length`) }; };
+            page = await open(`/view?src=${encodeURIComponent(ownDoc)}`); await until(`/Block \\d|Still waiting/.test(document.querySelector("main").innerText)`, "a paper's own proof"); page = await body();
+            must(/It covers/.test(page) && !/It says it covers/.test(page), "a paper's own .ots covers its text, hashed here");
+            await cdp("Network.setCacheDisabled", { cacheDisabled: true });
+            await cdp("Fetch.enable", { patterns: [{ urlPattern: "*log.333.eco/origin/checkpoints/*" }, { urlPattern: "*log.333.eco/origin/stamps/*.ots" }, { urlPattern: "*raw.githubusercontent.com*.ots" }] });
+            forge = (url) => (url.endsWith(`/origin/checkpoints/${at}`) ? { body: forgedNote } : undefined); page = await open(tsr);
+            must(forgedNote !== note && !(await ev(`!!document.querySelector('.ex-ok')`)) && /didn.t pass its check/.test(page), "CONTROL: a .tsr over a checkpoint the log didn't sign gets no tick");
+            forge = (url) => (url.endsWith(`/origin/stamps/${a}.ots`) ? { body: otherOts } : undefined);
+            let got = await proofState(`/view?src=${encodeURIComponent(`https://log.333.eco/origin/stamps/${a}.ots`)}`);
+            must(a !== b && /Block \d/.test(got.page) && /It says it covers/.test(got.page) && got.ticks === 0, `CONTROL: a .ots naming checkpoint ${b}'s fingerprint, at ${a}'s address, says what it SAYS it covers and ticks no block`);
+            forge = (url) => (url === ownDoc ? { body: otherDoc } : undefined); got = await proofState(`/view?src=${encodeURIComponent(ownDoc)}`);
+            must(/Block \d/.test(got.page) && /It says it covers/.test(got.page) && got.ticks === 0, "CONTROL: another paper's .ots at this paper's address ticks no block");
+            forge = null; await cdp("Fetch.disable"); await cdp("Network.setCacheDisabled", { cacheDisabled: false });
+        }
         for (const bad of ["https://evil.example/x.ots", "http://log.333.eco/origin/stamps/3.ots", "https://log.333.eco/origin/stamps/index.json", "https://raw.githubusercontent.com/thonly/publications/main/README.md", "https://raw.githubusercontent.com/someone/else/main/x.md.ots", "https://log.333.eco/origin/../../secret.ots"]) { page = await open(`/view?src=${encodeURIComponent(bad)}`); must(/can.t open that address/.test(page), `CONTROL: refuses ${bad}`); }
         page = await open(`/view?src=${encodeURIComponent("https://raw.githubusercontent.com/thonly/publications/main/defensive-publications/zero-point-game.md.r1.ots")}`); must(/Block 959,585/.test(page) && /The document/.test(page), "a paper's older proof reads too, against its known block");
         await go(`${recordAt}/proof`); await until(`/What.s in it/.test(document.querySelector('main').innerText)`, "the record's proof"); page = await body(); must(/The checkpoint/.test(page) && /The path/.test(page) && [...page.matchAll(/Download this record/g)].length === 1, "the record's proof reads as its parts, and can still be downloaded"); must(!/\bnull\b|undefined/.test(page), "no stray null on the proof page"); await noSideways("proof"); await shot("15-proof");

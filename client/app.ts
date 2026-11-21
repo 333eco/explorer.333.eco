@@ -739,21 +739,38 @@ async function viewPage(src: string, entry: number | null) {
         return view.replaceChildren(title(say("Entries of the public log, as they are stored. Each is signed, and none of them says who signed it.", "ធាតុនៃកំណត់ហេតុសាធារណៈ ដូចដែលបានរក្សាទុក។ ធាតុនីមួយៗត្រូវបានចុះហត្ថលេខា ហើយគ្មានធាតុណាមួយនិយាយថាអ្នកណាបានចុះហត្ថលេខាទេ។")),
             ...items.map((e) => h("div", { class: e.index === entry ? "card ex-first ex-entry" : "card ex-entry" }, h("details", e.index === entry || items.length <= 5 ? { open: true } : {}, h("summary", {}, say(`Entry #${n(e.index)}`, `ធាតុ #${n(e.index)}`)), h("pre", { class: "code ex-raw" }, h("code", {}, e.body))))), original(src), back);
     }
+    // ⛔ 2026-11-20 (the explorer's ticks): what a proof "covers" is CHECKED before anything is ticked: a .tsr's checkpoint by the log's own
+    //   signature and the size its address names, a .ots's fingerprint against the hash of what it covers, read here. Otherwise the file
+    //   only says what it covers, and nothing in it is ticked. Both were taken from the address, and ticked.
+    const covering = (ok: boolean) => (ok ? say("It covers", "វាគ្របដណ្តប់") : say("It says it covers", "វានិយាយថាវាគ្របដណ្តប់"));
+    /** The log's own signed checkpoint at `size`: its stamped text, or a failed row; null when it can't be read. */
+    const stamped = async (size: number): Promise<{ body: Uint8Array } | { bad: Node } | null> => {
+        const raw = await logGet(`checkpoints/${size}`).catch(() => null); if (!raw) return null;
+        const note = text(raw), cp = await checkCheckpoint(note, trust).catch(() => ({ ok: false }));
+        if (cp.ok && cp.size === size) return { body: enc(checkpointBody(note)) };
+        return { bad: leg(false, say("The stamped checkpoint didn't pass its check", "checkpoint ដែលបានបោះត្រាមិនបានឆ្លងការពិនិត្យទេ"), cp.ok ? say(`It holds ${count(cp.size, "entry", "entries")}, not ${n(size)}.`, `វាមាន ${n(cp.size)} ធាតុ មិនមែន ${n(size)} ទេ។`) : say("It isn't the log's own signed checkpoint.", "វាមិនមែនជា checkpoint ដែលកំណត់ហេតុបានចុះហត្ថលេខាដោយខ្លួនឯងទេ។")) };
+    };
     if (what.kind === "tsr") {
-        let got: { ok: boolean; time?: string; why?: string } = { ok: false, why: say("Its checkpoint couldn't be read.", "មិនអាចអាន checkpoint របស់វាបានទេ។") }, body: Uint8Array | null = null;
-        try { const note = await logGet(`checkpoints/${what.size}`); if (note) { body = new TextEncoder().encode(checkpointBody(text(note))); got = await checkTimestamp(bytes, body, ((trust as any).tsaRoots?.[what.authority] ?? []).map((r: string) => Uint8Array.from(atob(r), (c) => c.charCodeAt(0)))); } } catch { /* said below */ }
+        let got: { ok: boolean; time?: string; why?: string } = { ok: false, why: say("Its checkpoint couldn't be read.", "មិនអាចអាន checkpoint របស់វាបានទេ។") }, body: Uint8Array | null = null, bad: Node | null = null;
+        try { const held = await stamped(what.size); if (held && "bad" in held) bad = held.bad; else if (held) { body = held.body; got = await checkTimestamp(bytes, body, ((trust as any).tsaRoots?.[what.authority] ?? []).map((r: string) => Uint8Array.from(atob(r), (c) => c.charCodeAt(0)))); } } catch { /* said below */ }
         return view.replaceChildren(title(say("A timestamp token. An outside authority signed the fingerprint of the log's checkpoint, and the time.", "សញ្ញាពេលវេលា។ អាជ្ញាធរខាងក្រៅបានចុះហត្ថលេខាលើស្នាមម្រាមដៃនៃ checkpoint របស់កំណត់ហេតុ និងពេលវេលា។")),
-            card(got.ok ? leg(true, say(`${what.authority} signed it`, `${what.authority} បានចុះហត្ថលេខា`), say(`No later than ${when(got.time!)}`, `មិនយឺតជាង ${when(got.time!)}`)) : leg(false, say(`${what.authority} didn't check out`, `${what.authority} មិនឆ្លងការពិនិត្យទេ`), got.why ?? ""),
-                h("dl", { class: "ex-kv ex-gap" }, h("dt", {}, say("It covers", "វាគ្របដណ្តប់")), h("dd", {}, link(viewHref(`${LOG}checkpoints/${what.size}`), say(`The checkpoint at ${n(what.size)} entries`, `checkpoint នៅ ${n(what.size)} ធាតុ`))), ...(body ? [h("dt", {}, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា")), h("dd", { class: "ex-mono" }, full(hex(await sha256(body))))] : [])), raw(hexDump(bytes))), tickNote(), original(src), back);
+            card(bad ?? (got.ok ? leg(true, say(`${what.authority} signed it`, `${what.authority} បានចុះហត្ថលេខា`), say(`No later than ${when(got.time!)}`, `មិនយឺតជាង ${when(got.time!)}`)) : leg(false, say(`${what.authority} didn't check out`, `${what.authority} មិនឆ្លងការពិនិត្យទេ`), got.why ?? "")),
+                h("dl", { class: "ex-kv ex-gap" }, h("dt", {}, covering(got.ok)), h("dd", {}, link(viewHref(`${LOG}checkpoints/${what.size}`), say(`The checkpoint at ${n(what.size)} entries`, `checkpoint នៅ ${n(what.size)} ធាតុ`))), ...(body ? [h("dt", {}, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា")), h("dd", { class: "ex-mono" }, full(hex(await sha256(body))))] : [])), raw(hexDump(bytes))), tickNote(), original(src), back);
     }
     const digest = otsDigest(bytes), digestBytes = digest ? Uint8Array.from(digest.match(/../g)!.map((c) => parseInt(c, 16))) : null;
     const seen = digestBytes ? await checkOts(bytes, digestBytes, { header: headerOf }) : { ok: false, why: say("This isn't an OpenTimestamps proof.", "នេះមិនមែនជាភស្តុតាង OpenTimestamps ទេ។") };
     if (!seen.ok) return view.replaceChildren(title(), card(leg(false, say("This proof can't be read", "មិនអាចអានភស្តុតាងនេះបានទេ"), seen.why ?? "")), original(src), back);
+    const doc = src.replace(/\.(?:r\d+\.)?ots$/, "");
+    let covers = false;
+    try {
+        if (what.size === null) covers = digest === (await textHash(doc));
+        else { const held = await stamped(what.size); covers = !!held && "body" in held && digest === hex(await sha256(held.body)); }
+    } catch { /* not covered: said, not ticked */ }
     const blocks = new Map<number, { verified: boolean | null; time?: string }>();
     for (const b of seen.bitcoin as { height: number; verified: boolean | null; time?: string }[]) { const had = blocks.get(b.height); if (!had || b.verified === true) blocks.set(b.height, b); }
     return view.replaceChildren(title(say("An OpenTimestamps proof. It holds no text, only the hash steps from a fingerprint up to a Bitcoin block.", "ភស្តុតាង OpenTimestamps។ វាមិនផ្ទុកអត្ថបទទេ មានតែជំហានហាសពីស្នាមម្រាមដៃទៅប្លុក Bitcoin។")),
-        card(h("dl", { class: "ex-kv" }, h("dt", {}, say("It covers", "វាគ្របដណ្តប់")), h("dd", {}, what.size === null ? link(viewHref(src.replace(/\.(?:r\d+\.)?ots$/, "")), say("The document", "ឯកសារ")) : link(viewHref(`${LOG}checkpoints/${what.size}`), say(`The checkpoint at ${n(what.size)} entries`, `checkpoint នៅ ${n(what.size)} ធាតុ`))), h("dt", {}, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា")), h("dd", { class: "ex-mono" }, full(digest!))),
-            ...[...blocks].sort((a, b) => a[0] - b[0]).map(([height, b]) => leg(b.verified, "Bitcoin", blockLink(height), b.verified === true ? say(` · mined ${date(b.time!)}`, ` · បានជីកនៅ ${date(b.time!)}`) : b.verified === false ? say(" · this block doesn't hold this proof", " · ប្លុកនេះមិនមានភស្តុតាងនេះទេ") : say(" · the block couldn't be read just now", " · មិនអាចអានប្លុកបានឥឡូវនេះទេ"))),
+        card(h("dl", { class: "ex-kv" }, h("dt", {}, covering(covers)), h("dd", {}, what.size === null ? link(viewHref(doc), say("The document", "ឯកសារ")) : link(viewHref(`${LOG}checkpoints/${what.size}`), say(`The checkpoint at ${n(what.size)} entries`, `checkpoint នៅ ${n(what.size)} ធាតុ`))), h("dt", {}, say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា")), h("dd", { class: "ex-mono" }, full(digest!))),
+            ...[...blocks].sort((a, b) => a[0] - b[0]).map(([height, b]) => leg(b.verified === true && !covers ? null : b.verified, "Bitcoin", blockLink(height), b.verified === true ? say(` · mined ${date(b.time!)}`, ` · បានជីកនៅ ${date(b.time!)}`) : b.verified === false ? say(" · this block doesn't hold this proof", " · ប្លុកនេះមិនមានភស្តុតាងនេះទេ") : say(" · the block couldn't be read just now", " · មិនអាចអានប្លុកបានឥឡូវនេះទេ"))),
             ...(seen.pending as string[]).map((c) => leg(null, say("Still waiting", "នៅតែរង់ចាំ"), say(`${c} hasn't reported a block in this copy.`, `${c} មិនទាន់រាយការណ៍ប្លុកក្នុងច្បាប់ចម្លងនេះទេ។`))),
             raw(hexDump(bytes))), tickNote(), original(src), back);
 }
