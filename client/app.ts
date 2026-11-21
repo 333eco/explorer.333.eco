@@ -653,6 +653,18 @@ async function docPage(slug: string) {
    Three of the files behind the Source links are binary or served as binary, so a browser only downloads them. This reads the same bytes here and says what they hold, beside the original. */
 const hexDump = (b: Uint8Array) => { const lines: string[] = []; for (let i = 0; i < b.length; i += 16) lines.push(`${i.toString(16).padStart(6, "0")}  ${hex(b.subarray(i, i + 16)).replace(/(..)/g, "$1 ").trim()}`); return lines.join("\n"); };
 const raw = (body: string, open = false) => h("details", open ? { open: true } : {}, h("summary", {}, say("The file itself", "ឯកសារផ្ទាល់")), h("pre", { class: "code ex-raw" }, h("code", {}, body)));
+// ⭐ A checkpoint's file, whole and in its own order, with the signatures that are not counted yet folded away (founder 2026-11-20,
+//   roadmap A542): the README names an outside witness only once it is one, so those lines sit one click down, never hidden. The
+//   signed text and the log's own signature stay open. Split by the line's key name: the log signs as its origin.
+const checkpointRaw = (note: string, origin: string, others: number) => {
+    if (!others) return raw(note, true);
+    const at = note.indexOf("\n\n") + 2, lines = note.slice(at).split("\n").filter(Boolean);
+    const own = lines.filter((l) => l.startsWith(`— ${origin} `)), rest = lines.filter((l) => !l.startsWith(`— ${origin} `));
+    return h("details", { open: true }, h("summary", {}, say("The file itself", "ឯកសារផ្ទាល់")),
+        h("pre", { class: "code ex-raw" }, h("code", {}, note.slice(0, at) + own.join("\n"))),
+        h("details", {}, h("summary", {}, say(`${count(rest.length, "other signature", "other signatures")}, not counted yet`, `ហត្ថលេខាផ្សេងទៀត ${n(rest.length)} មិនទាន់ត្រូវបានរាប់`)),
+            h("pre", { class: "code ex-raw" }, h("code", {}, rest.join("\n")))));
+};
 const openOriginal = (src: string) => h("a", { class: "btn ghost", href: src, rel: "noopener" }, say("Open the original", "បើកឯកសារដើម"));
 const original = (src: string) => h("a", { class: "btn ghost", href: src, download: "" }, say("Download the original", "ទាញយកឯកសារដើម"));
 /** ⛔ Reads only the log's own proof files and the proofs beside the corpus's documents, so this page can't be made to show anything else under this address. */
@@ -688,7 +700,7 @@ async function viewPage(src: string, entry: number | null) {
         return view.replaceChildren(head(say("A checkpoint", "checkpoint"), say("The log's signed statement of how long it is and what its root hash is. Every record it holds leads to that root.", "សេចក្តីថ្លែងដែលបានចុះហត្ថលេខារបស់កំណត់ហេតុអំពីប្រវែងរបស់វា និងហាសឫសរបស់វា។ កំណត់ត្រានីមួយៗដែលវាផ្ទុកនាំទៅឫសនោះ។")),
             card(got.ok ? leg(true, say("The log's signature", "ហត្ថលេខារបស់កំណត់ហេតុ"), say("Checked here against the log's published key.", "បានពិនិត្យនៅទីនេះធៀបនឹងសោដែលបានបោះពុម្ពរបស់កំណត់ហេតុ។")) : leg(false, say("The log's signature", "ហត្ថលេខារបស់កំណត់ហេតុ"), got.why ?? ""),
                 h("dl", { class: "ex-kv ex-gap" }, h("dt", {}, say("The log", "កំណត់ហេតុ")), h("dd", { class: "ex-mono" }, origin), h("dt", {}, say("Its size", "ទំហំរបស់វា")), h("dd", {}, count(Number(size), "entry", "entries")), h("dt", {}, say("Its root", "ឫសរបស់វា")), h("dd", { class: "ex-mono" }, root)),
-                others ? h("p", { class: "ex-gap" }, say(`The file holds ${count(others, "other signature", "other signatures")}. They aren't counted yet. `, `ឯកសារមានហត្ថលេខាផ្សេងទៀត ${n(others)}។ ពួកវាមិនទាន់ត្រូវបានរាប់ទេ។ `), link("https://developers.333.eco/verify#tree", say("How the log holds together", "របៀបដែលកំណត់ហេតុរក្សាភាពជាប់គ្នា"))) : null, raw(note, true)), tickNote(), openOriginal(src), back);
+                others ? h("p", { class: "ex-gap" }, say(`The file holds ${count(others, "other signature", "other signatures")}. They aren't counted yet. `, `ឯកសារមានហត្ថលេខាផ្សេងទៀត ${n(others)}។ ពួកវាមិនទាន់ត្រូវបានរាប់ទេ។ `), link("https://developers.333.eco/verify#tree", say("How the log holds together", "របៀបដែលកំណត់ហេតុរក្សាភាពជាប់គ្នា"))) : null, checkpointRaw(note, origin, others)), tickNote(), openOriginal(src), back);
     }
     if (what.kind === "doc") {
         const d = what.doc, got = hex(await sha256(bytes));
