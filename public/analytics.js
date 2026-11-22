@@ -69,7 +69,19 @@
     function pageView() {
         if (location.pathname === lastPath) return;
         lastPath = location.pathname;
-        post("page_view", { path: location.pathname, ref: document.referrer });
+        var maView = { path: location.pathname, ref: document.referrer };
+        // The utm_source tag alone, on the landing view only (2026-11-22): an AI assistant's app
+        // sends no referrer, so ChatGPT tags the links it shows instead. Never the rest of the query.
+        if (!window.__maUtmRead) {
+            window.__maUtmRead = true;
+            try {
+                var maUtm = (new URLSearchParams(location.search).get("utm_source") || "")
+                    .slice(0, 64)
+                    .replace(/[^\w.:-]/g, "");
+                if (maUtm) maView.utm = maUtm;
+            } catch (e) {}
+        }
+        post("page_view", maView);
     }
     function wrap(name) {
         var orig = history[name];
