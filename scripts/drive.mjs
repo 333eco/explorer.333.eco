@@ -157,7 +157,7 @@ try {
     if (sha) { await ev(`(()=>{const i=document.querySelector('input[type=search]');i.value=${JSON.stringify(sha)};document.querySelector('.ex-search button').click();})()`); await until(`/\\d+ found/.test(document.querySelector('main').innerText)`, "the fingerprint search"); must(true, "a real fingerprint finds its record"); }
     await ev(`(()=>{const i=document.querySelector('input[type=search]');i.value='${"0".repeat(64)}';document.querySelector('.ex-search button').click();})()`); await until(`/No record matches/.test(document.querySelector('main').innerText)`, "the search control"); must(true, "CONTROL: a fingerprint nobody signed finds nothing");
 
-    must(await ev(`[...document.querySelectorAll('nav [data-nav]')].map(a=>a.dataset.nav).join()==='origin,ledger,corpus'`), "the menu reads B-Origin, Ledger, Corpus (Corpus last)");
+    must(await ev(`[...document.querySelectorAll('nav [data-nav]')].map(a=>a.dataset.nav).join()==='origin,ledger,corpus,legal'`), "the menu reads B-Origin, Ledger, Corpus, Legal (Legal last, A709)");
     {   // The gratitude ledger (2026-11-06): proofs only, every check here, a receipt checked on the device, and a tampered entry refused.
         await go("/ledger"); await until(`/checked/.test(document.querySelector('main').innerText) && !/Checking the outside clocks/.test(document.querySelector('main').innerText)`, "the ledger page");
         const page = await body();
@@ -385,6 +385,85 @@ try {
     await ev(`document.querySelector('button[data-lang=km]').click()`); await until(`document.documentElement.lang==='km' && /ត្រាពេលវេលា/.test(document.querySelector('main').innerText)`, "Khmer"); await sleep(1500); await shot("6-doc-km");
     await go("/origin"); await until(`document.querySelector('table')`, "records in Khmer"); await shot("7-origin-km"); await ev(`document.querySelector('button[data-lang=en]').click()`); await until(`document.querySelector('table')`, "records"); await dark(true); await shot("8-origin-dark"); await dark(false);
     await size(1280, 800, false); await go("/corpus"); await until(`document.querySelector('.ex-doc')`, "desktop corpus"); await shot("9-corpus-desktop");
+    {   // The Legal tab (roadmap A709, founder 2026-11-25: timestamped "like we do for our papers", checked on "a new "Legal" tab page").
+        // Against the live public repository 333eco/legal-versions: every version listed by host, each one checked here; then one version,
+        // its limit in its own card and "Served from" in another. CONTROLS: one byte changed in the text (no tick, no date); a confirmed
+        // proof from the corpus served as a legal version (the block path the live record can't show yet, every proof there is pending),
+        // with one byte changed and with another text's proof; and the probe for barred words sees one when it is there.
+        const legalMain = `document.querySelector('main').innerText`, settled = `!/Checking…|កំពុងពិនិត្យ…|Reading the index/.test(${legalMain})`;
+        const BARRED = /\bverif(?:y|ied|ies)\b|\bcertif(?:y|ied)\b|notar|\bthe estate\b|\bsign[\s-]?in\b|គ្រប់ស្ថាប័ន/i;
+        const apart = `![...document.querySelectorAll('main .card, main .ex-leg, main p')].some(e=>/existed by|មានរួចហើយនៅ/i.test(e.innerText)&&/Served from|បង្ហាញពី/.test(e.innerText))`;
+        const index = await (await fetch("https://raw.githubusercontent.com/333eco/legal-versions/main/index.json")).json(), all = index.documents.flatMap((d) => d.versions.map((v) => ({ d, v })));
+        await size(390, 844, true); await go("/legal"); await until(`document.querySelector('main .ex-row') && ${settled}`, "the Legal tab");
+        must(await ev(`document.querySelector('[data-nav=legal]').getAttribute('aria-current')==='page' && document.title==='Legal documents · B-Explorer'`), "the Legal tab is the current one, and the page is named");
+        const hosts = await ev(`[...document.querySelectorAll('main .card h2')].map(x=>x.textContent)`);
+        must(JSON.stringify(hosts) === JSON.stringify([...new Set(index.documents.map((d) => d.host))]), `every document is grouped under its host (${hosts.join(", ")})`);
+        const rows = await ev(`[...document.querySelectorAll('main a.ex-row')].map(a=>({href:a.getAttribute('href'),text:a.innerText,ok:[...a.querySelectorAll('.ex-ok')].map(p=>p.textContent),bad:a.querySelectorAll('.ex-bad').length,pills:[...a.querySelectorAll('.pill')].map(p=>p.textContent)}))`);
+        must(rows.length === all.length && all.every(({ d, v }) => rows.some((r) => r.href === `/legal/${d.host}/${d.doc}/${v.id}` && r.text.includes(v.sha256.slice(0, 6)) && r.text.includes(v.dateLine.replace(/\.$/, "")))), `every version is listed with its date line and the first 6 hex of its fingerprint (${rows.length})`);
+        must(rows.every((r) => r.bad === 0 && r.ok.includes("3 timestamp authorities")), `each version's manifest and its three authorities' tokens were checked here (${rows.map((r) => r.ok.join("+")).join(" | ")})`);
+        must(rows.every((r) => r.ok.includes("Bitcoin") || r.pills.includes("Waiting for a block. This takes a few hours.")), "each version's Bitcoin chip is a checked block or the live wording for a pending proof");
+        const words = await body(); must(!BARRED.test(words) && !/\b\d+ (?:views|visits|checks)\b|\brank/i.test(words), "no barred word, no counter or rank on the list");
+        await shot("22-legal-390"); await noSideways("the Legal tab");
+        const { d, v } = all.find((x) => x.d.host === "earth.333.eco" && x.d.doc === "terms"), at = `/legal/${d.host}/${d.doc}/${v.id}`;
+        await ev(`document.querySelector('a.ex-row[href="${at}"]').click()`); await until(`location.pathname==='${at}' && ${settled}`, "one version");
+        const legs = () => ev(`[...document.querySelectorAll('main .ex-leg')].map(l=>({t:l.querySelector('b').textContent,ok:l.querySelector('b').className,p:l.querySelector('p').innerText}))`);
+        let L = await legs(); const of = (t) => L.find((x) => x.t === t);
+        must(of("Its fingerprint")?.ok === "ex-ok" && /hashed here just now/.test(of("Its fingerprint").p) && (await body()).includes(v.sha256.replace(/(.{4})/g, "$1 ").trim()), "its fingerprint is hashed here and matches the index, shown in full");
+        must(of("Timestamp authorities")?.ok === "ex-ok" && /In the \d{4}-\d{2}-\d{2} manifest, which .+ signed no later than/.test(of("Timestamp authorities").p), `the manifest that lists it, and its authorities' tokens, checked here (${of("Timestamp authorities")?.p.slice(0, 90)})`);
+        must(of("Bitcoin")?.ok === "ex-ok" ? /The proof leads from this text to this block/.test(of("Bitcoin").p) : /^Waiting for a block\. This takes a few hours\./.test(of("Bitcoin")?.p ?? ""), `Bitcoin, in the papers' live words (${of("Bitcoin")?.p.slice(0, 60)})`);
+        const limit = await ev(`document.querySelector('main .ex-limit').innerText`);
+        must(/^What this shows: the text existed by [A-Z][a-z]{2} \d{1,2}, \d{4}\. It does not show who published it, or that it was in force\.$/.test(limit.trim()), `the limit, in its own card, with the date a check passed (${limit.trim().slice(0, 60)})`);
+        must(await ev(`[...document.querySelectorAll('main .card')].some(c=>c.querySelector('h2')?.textContent==='Served from' && c.querySelector('a').href==='https://legal.333.eco/${d.host}/${d.doc}/${v.id}/') && !document.querySelector('main .ex-limit').contains(document.querySelector('main a[href^="https://legal.333.eco/"]'))`), "\"Served from\" is its own card, linking the version's address on legal.333.eco");
+        must(await ev(apart), "\"existed by\" and \"Served from\" are never in one card or line");
+        must(!/review record/i.test(await body()), "no review record exists, and none is shown (its absence isn't rendered)");
+        must(!BARRED.test(await body()), "no barred word on the version page");
+        await ev(`document.querySelector('main').insertAdjacentHTML('beforeend','<p>verified by the estate</p>')`); must(BARRED.test(await body()), "CONTROL: the same probe sees a barred word when one is there");
+        await ev(`document.querySelector('main .ex-limit').insertAdjacentHTML('beforeend','<p>Served from x</p>')`); must(!(await ev(apart)), "CONTROL: and sees \"existed by\" and \"Served from\" together when they are");
+        await go(at); await until(settled, "the version again"); await shot("23-legal-version-390"); await noSideways("a legal version");
+        await cdp("Network.setCacheDisabled", { cacheDisabled: true });
+        await cdp("Fetch.enable", { patterns: [{ urlPattern: `*raw.githubusercontent.com/333eco/legal-versions/*${v.id}.md` }] }); tamperDoc = true;
+        await go(at); await until(settled, "the version, with one byte changed in its text");
+        L = await legs();
+        must(!(await ev(`!!document.querySelector('main .ex-ok')`)) && of("Its fingerprint")?.ok === "ex-bad", `CONTROL: one byte changed in the text and nothing on the page is ticked (${L.map((x) => `${x.t}:${x.ok || "-"}`).join(", ")})`);
+        must(/No check on this page dated this text just now/.test(await ev(`document.querySelector('main .ex-limit').innerText`)) && !/existed by [A-Z]/.test(await body()), "and no \"existed by\" date is given");
+        await shot("24-legal-tampered");
+        await go("/legal"); await until(`document.querySelector('main .ex-row') && ${settled}`, "the list, with that text changed");
+        must(await ev(`!document.querySelector('a.ex-row[href="${at}"] .ex-ok') && !!document.querySelector('a.ex-row[href="${at}"] .ex-bad')`), "CONTROL: on the list, that version's chips lose their ticks and say its text doesn't match");
+        tamperDoc = false; await cdp("Fetch.disable");
+        {   // The confirmed-block path: the-founder.md and its confirmed proof, served as a version in a forged index.
+            const text = Buffer.from(await (await fetch("https://raw.githubusercontent.com/thonly/publications/main/about/the-founder.md")).arrayBuffer());
+            const ots = Buffer.from(await (await fetch("https://raw.githubusercontent.com/thonly/publications/main/about/the-founder.md.ots")).arrayBuffer());
+            const otherOts = Buffer.from(await (await fetch(`https://raw.githubusercontent.com/333eco/legal-versions/main/${v.path}.ots`)).arrayBuffer());
+            const s = createHash("sha256").update(text).digest("hex"), id = `2026-09-01-${s.slice(0, 6)}`, path = `earth.333.eco/terms/${id}.md`;
+            const forged = { ...index, documents: [{ ...d, versions: [...d.versions, { ...v, id, date: "2026-09-01", dateLine: "Draft of 1 September 2026.", sha256: s, path, firstServed: "2026-09-01", review: { date: "2027-01-12" } }] }] }; // a review record too (E10): none exists live yet
+            let served = { text, ots };
+            forge = async (url) => url.endsWith("/legal-versions/main/index.json") ? { body: JSON.stringify(forged) } : url.endsWith(`/${path}`) ? { body: served.text } : url.endsWith(`/${path}.ots`) ? { body: served.ots } : undefined;
+            await cdp("Fetch.enable", { patterns: [{ urlPattern: "*raw.githubusercontent.com/333eco/legal-versions/*" }] });
+            const page = `/legal/${d.host}/${d.doc}/${id}`;
+            await go(page); await until(settled, "a confirmed proof served as a legal version"); L = await legs();
+            must(of("Bitcoin")?.ok === "ex-ok" && /^Block 967,728\. The proof leads from this text to this block, whose header was read from mempool\.space just now\. Mined/.test(of("Bitcoin").p), `a confirmed proof is taken to its block and ticked, in the papers' words (${of("Bitcoin")?.p.slice(0, 50)})`);
+            must(/existed by Sep \d{1,2}, 2026\./.test(await ev(`document.querySelector('main .ex-limit').innerText`)), "and the limit gives the block's date");
+            must(of("Timestamp authorities")?.ok === "" && /No manifest read here just now lists this version/.test(of("Timestamp authorities").p), "a version no manifest lists says so, unticked, with the manifests linked");
+            const rev = of("The review record");
+            must(!!rev && rev.ok === "" && /^Entered Jan 12, 2027, when a lawyer reviewed this version/.test(rev.p) && /It records that the review happened\. It does not show what the lawyer advised\./.test(rev.p), `CONTROL for "none is shown": a version with a review record shows its row, dated, with its limit, and not ticked (${rev?.p.slice(0, 70)})`);
+            await shot("25-legal-block");
+            served = { text: Buffer.from(text), ots }; served.text[served.text.length - 5] ^= 1;
+            await go(page); await until(settled, "the same, with one byte changed in its text"); L = await legs();
+            must(!(await ev(`!!document.querySelector('main .ex-ok')`)) && /wasn.t checked here, because the text didn.t hash here/.test(of("Bitcoin")?.p ?? ""), "CONTROL: the same proof beside a text with one byte changed gets no tick");
+            served = { text, ots: otherOts };
+            await go(page); await until(settled, "the same, with another text's proof"); L = await legs();
+            must(of("Bitcoin")?.ok === "ex-bad" && /names another fingerprint/.test(of("Bitcoin").p), "CONTROL: another text's proof served beside it names another fingerprint, and isn't ticked");
+            forge = null; await cdp("Fetch.disable"); await cdp("Network.setCacheDisabled", { cacheDisabled: false });
+        }
+        await go(at); await until(settled, "the version");
+        await ev(`document.querySelector('button[data-lang=km]').click()`); await until(`document.documentElement.lang==='km' && /អ្វីដែលនេះបង្ហាញ/.test(document.querySelector('main .ex-limit').innerText)`, "the version in Khmer");
+        must(/ច្បាប់/.test(await ev(`document.querySelector('[data-nav=legal]').innerText`)) && (await ev(apart)) && !BARRED.test(await body()), "in Khmer: the tab reads ច្បាប់, the two facts stay apart, no barred word"); await shot("26-legal-version-km");
+        await ev(`document.querySelector('button[data-lang=en]').click()`);
+        await go(`/legal/${d.host}/${d.doc}/2026-01-01-000000`); await until(`/no document by that name/.test(${legalMain})`, "a version that doesn't exist"); must(true, "a version that doesn't exist says so");
+        await go(`/legal/${d.host}/${d.doc}`); await until(`/^\\/legal\\/earth\\.333\\.eco\\/terms$/.test(location.pathname) && ${settled}`, "the current version"); must(await ev(`document.querySelector('main .ex-limit') && document.querySelector('h1').textContent==='${d.title} · ${d.host}'`), "a document's address without a version opens its current version");
+        await size(1280, 800, false); await go("/legal"); await until(`document.querySelector('main .ex-row') && ${settled}`, "the Legal tab, desktop"); await shot("27-legal-desktop");
+        await go(at); await until(settled, "a version, desktop"); await shot("28-legal-version-desktop");
+    }
     {   // The B-Mail check page (§b-mail-viral-loop): a mail that was never signed gets the failed check and NO invitation. The found
         // path is client/invite.ts's own check (scripts/check-invite.mjs): a real record's text would be someone's mail.
         const m = Buffer.from("b-mail/v1\nfrom: A <a@x.test>\nto: b@x.test\nname: @sokha.keo\nsubject: never signed\n\nHello.\n").toString("base64url");

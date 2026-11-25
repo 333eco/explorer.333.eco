@@ -4,7 +4,7 @@
     "type": "module",
     "scripts": {
         "build": "node scripts/build.mjs",
-        "test": "node scripts/check-invite.mjs && node scripts/check-ledger-memory.mjs && node scripts/check-stamped.mjs && node scripts/check-attachments.mjs",
+        "test": "node scripts/check-invite.mjs && node scripts/check-ledger-memory.mjs && node scripts/check-stamped.mjs && node scripts/check-attachments.mjs && node scripts/check-legal.mjs",
         "drive": "node scripts/drive.mjs"
     },
     "dependencies": {
