@@ -1,6 +1,7 @@
 // The built site in real Chrome against the real log and corpus, served as Cloudflare Pages serves it (its _headers CSP, its fallback). Each check has a control: a tampered log must fail out loud.
 //   node scripts/drive.mjs [out-dir]
 import { spawn } from "node:child_process";
+import { build } from "esbuild";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -27,11 +28,12 @@ try {
     for (let i = 0; i < 50 && !target; i++) { await sleep(200); try { target = (await (await fetch("http://127.0.0.1:9336/json")).json()).find((t) => t.type === "page"); } catch {} }
     const ws = new WebSocket(target.webSocketDebuggerUrl);
     await new Promise((r) => { ws.onopen = r; });
-    let id = 0, tamperLedger = false, tamper = false, tamperBlock = false, githubOut = false, tamperDoc = false, forge = null; const wait = new Map(), errors = [];
+    let id = 0, tamperLedger = false, tamper = false, tamperBlock = false, githubOut = false, tamperDoc = false, forge = null; const wait = new Map(), errors = [], sent = [];
     const cdp = (method, params = {}) => new Promise((r) => { const n = ++id; wait.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
     ws.onmessage = async (m) => {
         const d = JSON.parse(m.data);
         if (d.id) { wait.get(d.id)?.(d); wait.delete(d.id); }
+        if (d.method === "Network.requestWillBeSent") sent.push(`${d.params.request.url} ${d.params.request.postData ?? ""}`); // every request the page makes, while Network is on
         if (d.method === "Runtime.exceptionThrown") errors.push(d.params.exceptionDetails.exception?.description ?? d.params.exceptionDetails.text);
         if (d.method === "Log.entryAdded" && d.params.entry.level === "error" && !/analytics|cloudflareinsights|api\/track|favicon|raw\.githubusercontent\.com\/.*(timestamps\/manifests|\.r\d+\.ots)|api\.github\.com|mempool\.space|zenodo\.org|archive\.org|log\.333\.eco\/origin\/stamps/.test(d.params.entry.text + (d.params.entry.url ?? "")) && !tamper) errors.push(`${d.params.entry.text} ${d.params.entry.url ?? ""}`);
         if (d.method === "Fetch.requestPaused") {
@@ -391,6 +393,109 @@ try {
         must(!(await ev(invites)), "an unsigned B-Mail gets the failed check and no invitation"); must((await ev("location.hash")) === "", "the message left the address once read");
         await ev(`document.querySelector('main').insertAdjacentHTML('beforeend','<a href="https://333.eco/?from=b-mail">x</a>')`);
         must(await ev(invites), "CONTROL: the same probe sees an invitation when one is there");
+    }
+    {   // 2026-11-25 (founder: "Attachments: agree"; spec §3.1, §9.2): a B-Mail's files are compared on this device. The vectors are the
+        // mail skill's (bmail_canonical), each `want` an exact statement. None is in the log, so the live page must show NO file box
+        // beside them (nothing was signed); the box itself is client/attachments.ts, bundled here and driven on this page, under its CSP.
+        // ⚠️ The found path (a real record that lists a file) is owed: it needs one real signed B-Mail with an attachment.
+        const V = JSON.parse(readFileSync(new URL("attachment-vectors.json", import.meta.url), "utf8"));
+        await size(390, 844, true);
+        await go(`/b-mail#m=${Buffer.from(V[0].want).toString("base64url")}`); await until(`/No record of this exact message/.test(document.querySelector('main').innerText)`, "an unsigned B-Mail that lists a file");
+        const box = `!!document.querySelector('main .ex-files, main input[type=file]')`;
+        must(!(await ev(box)), "a statement with no record shows no file box, though it lists a file");
+        await ev(`document.querySelector('main').insertAdjacentHTML('beforeend','<input type=file>')`); must(await ev(box), "CONTROL: the same probe sees a file input when one is there");
+        const harness = (await build({ entryPoints: [new URL("../client/attachments.ts", import.meta.url).pathname], bundle: true, format: "iife", globalName: "__att", write: false })).outputFiles[0].text;
+        await ev(harness);
+        const mount = (i) => ev(`(()=>{window.__kept=[];const b=__att.fileBox(${JSON.stringify(V[i].want)},window.__kept);document.getElementById('view').replaceChildren(b);return !!b})()`);
+        const file = (name, b64, flip) => `(()=>{const b=Uint8Array.from(atob(${JSON.stringify(b64)}),c=>c.charCodeAt(0));${flip ? "b[b.length-1]^=1;" : ""}return new File([b],${JSON.stringify(name)})})()`;
+        const drop = (files) => ev(`(()=>{const dt=new DataTransfer();for(const f of [${files.join(",")}])dt.items.add(f);document.querySelector('.ex-files').dispatchEvent(new DragEvent('drop',{dataTransfer:dt,bubbles:true,cancelable:true}));})()`);
+        const settled = (k) => until(`!/Reading the files/.test(document.querySelector('.ex-files').innerText) && window.__kept.length>=${k}`, "the files read");
+        const rows = () => ev(`[...document.querySelectorAll('.ex-files .ex-leg')].map(l=>({t:l.querySelector('b').textContent,ok:l.querySelector('b').className,p:l.querySelector('p').textContent}))`);
+        await cdp("Network.enable");
+        // Vector 1, through the real file chooser: its file, the same file with one byte changed, a file not listed, and the carrier.
+        const dir1 = join(out, "attachments"); mkdirSync(dir1, { recursive: true });
+        const changed = Buffer.from(V[0].files[0].b64, "base64"); changed[changed.length - 1] ^= 1;
+        writeFileSync(join(dir1, "report.pdf"), Buffer.from(V[0].files[0].b64, "base64")); writeFileSync(join(dir1, "report-changed.pdf"), changed); writeFileSync(join(dir1, "other.txt"), "not signed"); writeFileSync(join(dir1, "B-Mail.txt"), V[0].want);
+        must(await mount(0), "the file box shows for a statement that lists a file"); await shot("17-bmail-files-before");
+        must((await rows()).length === 1 && /Fingerprint 4c41 3baa 5077/.test((await rows())[0].p), "before any file is chosen, each listed file shows its name and fingerprint, unmarked");
+        sent.length = 0;
+        const { root: docRoot } = (await cdp("DOM.getDocument", { depth: -1, pierce: true })).result, { nodeId } = (await cdp("DOM.querySelector", { nodeId: docRoot.nodeId, selector: ".ex-files input[type=file]" })).result;
+        await cdp("DOM.setFileInputFiles", { nodeId, files: ["report.pdf", "report-changed.pdf", "other.txt", "B-Mail.txt"].map((f) => join(dir1, f)) });
+        await settled(4); let r = await rows();
+        const of = (t) => r.find((x) => x.t === t);
+        must(of("report.pdf")?.ok === "ex-ok" && /This is the file signed with the message/.test(of("report.pdf").p), "the file received is the one signed (ticked, by its SHA-256 hashed here)");
+        must(of("report-changed.pdf")?.ok === "ex-bad" && /was not signed with the message/.test(of("report-changed.pdf").p), "CONTROL: the same file with one byte changed is not matched, and is said not signed");
+        must(of("other.txt")?.ok === "ex-bad", "a file that is not listed is said not signed with the message");
+        must(of("B-Mail.txt")?.ok === "" && /carries the signature/.test(of("B-Mail.txt").p), "the carrier B-Mail.txt is not counted as one of the message's files");
+        must(sent.length === 0, `no request while the files were read and compared (${sent.length}${sent.length ? `: ${sent[0].slice(0, 120)}` : ""})`);
+        await shot("18-bmail-files-chosen"); await noSideways("the file box");
+        // Vector 1 again, the changed file alone: the listed row is not matched, in words, never as a failure.
+        await mount(0); await drop([file("report.pdf", V[0].files[0].b64, true)]); await settled(1); r = await rows();
+        must(r[0].ok === "" && /None of the files you chose has this fingerprint/.test(r[0].p), "a listed file with no match says so plainly, unmarked");
+        // Vector 2, by drop: the Khmer-named file and the EMPTY file (the empty input's SHA-256).
+        await mount(1); await drop(V[1].files.map((f) => file(f.name, f.b64))); await settled(2); r = await rows();
+        must(r.length === 2 && r.every((x) => x.ok === "ex-ok"), "vector 2: both files match, the Khmer-named one and the empty one");
+        await mount(1); await drop([file("empty.bin", "")]); await settled(1); r = await rows();
+        must(r.find((x) => x.t === "empty.bin")?.ok === "ex-ok" && r.find((x) => x.t !== "empty.bin")?.ok === "", "the empty file alone matches its own line and nothing else");
+        // Vector 3: the name is informative; a renamed file still matches.
+        await mount(2); await drop([file("renamed.pdf", V[2].files[0].b64)]); await settled(1); r = await rows();
+        must(r[0].ok === "ex-ok" && /You chose it as “renamed\.pdf”/.test(r[0].p), "a file renamed by a mail app still matches by its SHA-256, and the page says the name it came with");
+        must(sent.length === 0, `no request while any of the files were read (${sent.length})`);
+        // Khmer, and the choice kept through a repaint (the language toggle repaints the page from the same kept files).
+        await ev(`document.documentElement.lang='km';document.getElementById('view').replaceChildren(__att.fileBox(${JSON.stringify(V[2].want)},window.__kept))`);
+        r = await rows(); must(r[0].ok === "ex-ok" && /នេះគឺជាឯកសារដែលបានចុះហត្ថលេខាជាមួយសារ/.test(r[0].p) && /ឯកសារដែលបានចុះហត្ថលេខាជាមួយវា/.test(await body()), "in Khmer, and the file chosen is kept through a repaint");
+        await shot("19-bmail-files-km"); await ev(`document.documentElement.lang='en'`);
+        // The founder's rule (2026-11-25, "3: agree"): a MULTISET, and the carriers' names left out by name, whatever their bytes.
+        await mount(0); await drop([file("report.pdf", V[0].files[0].b64), file("report copy.pdf", V[0].files[0].b64)]); await settled(2); r = await rows();
+        must(r.find((x) => x.t === "report.pdf")?.ok === "ex-ok" && r.find((x) => x.t === "report copy.pdf")?.ok === "ex-bad", "two copies of a file listed once: one is the file signed, the other is said not signed");
+        await mount(0); await drop([file("B-MAIL.TXT", V[0].files[0].b64)]); await settled(1); r = await rows();
+        must(r.find((x) => x.t === "report.pdf")?.ok === "" && /carries the signature/.test(r.find((x) => x.t === "B-MAIL.TXT")?.p ?? ""), "a file named B-MAIL.TXT is left out by its name, though its bytes are the listed file's");
+        must(sent.length === 0, `no request while those files were read either (${sent.length})`);
+        const words = await ev(`document.querySelector('.ex-files').innerText`); must(!/verif|person|human/i.test(words), "its words never say verified, never a person");
+        // CONTROL: the request probe sees a request carrying a file's fingerprint when one is made.
+        await ev(`fetch('/favicon.svg?f=${V[2].want.match(/[0-9a-f]{64}/)[0]}').catch(()=>{})`); await sleep(300);
+        must(sent.some((x) => x.includes(V[2].want.match(/[0-9a-f]{64}/)[0])), "CONTROL: the same probe sees a request when one is made");
+        await cdp("Network.disable");
+    }
+    {   // OPT-IN, the FOUND path on the real page (2026-11-25): a real signed B-Mail that lists a file. Its link is someone's mail, so it is
+        // never in this repo: BMAIL_FOUND_LINK names a file holding the check link (only its fragment is used, against this build), and
+        // BMAIL_FOUND_FILE the file it lists (read, never changed). It reads the live log; when the log can't be read it is NOT RUN.
+        const linkFile = process.env.BMAIL_FOUND_LINK, listedFile = process.env.BMAIL_FOUND_FILE;
+        if (!linkFile || !listedFile) console.log("NOT RUN the found B-Mail with a file: set BMAIL_FOUND_LINK (a file holding a real check link) and BMAIL_FOUND_FILE (the file it lists)");
+        else {
+            // A new document first: from /b-mail, a link that differs only after # would not reload, and the page reads its fragment once, at load.
+            await cdp("Page.navigate", { url: "about:blank" }); await sleep(300);
+            await size(390, 844, true); await go(`/b-mail#${readFileSync(linkFile, "utf8").trim().split("#")[1]}`);
+            await until(`/This exact message is record|No record of this exact message|didn.t pass its check/.test(document.querySelector('main').innerText)`, "the found B-Mail");
+            const page = await body();
+            if (/didn.t pass its check/.test(page)) console.log("NOT RUN the found B-Mail with a file: the live log couldn't be read just now");
+            else {
+                must(/This exact message is record #/.test(page), "the real B-Mail is found in the log");
+                await until(`!/Checking this message/.test(document.querySelector('main').innerText) && document.querySelector('main .ex-files')`, "its file box");
+                must(await ev(`!!document.querySelector('main .ex-files')`), "beside the found record that lists a file, the file box shows");
+                const listedName = await ev(`document.querySelector('.ex-files .ex-leg b').textContent`), dir2 = join(out, "found"); mkdirSync(dir2, { recursive: true });
+                const real = readFileSync(listedFile), changed = Buffer.from(real); changed[changed.length - 1] ^= 1;
+                writeFileSync(join(dir2, "changed-" + listedName), changed); writeFileSync(join(dir2, "unrelated.txt"), "not part of any mail");
+                must(createHash("sha256").update(changed).digest("hex") !== createHash("sha256").update(real).digest("hex"), "CONTROL: the changed copy's SHA-256 differs from the file's");
+                await cdp("Network.enable"); sent.length = 0;
+                const { root: r0 } = (await cdp("DOM.getDocument", { depth: -1, pierce: true })).result, { nodeId } = (await cdp("DOM.querySelector", { nodeId: r0.nodeId, selector: ".ex-files input[type=file]" })).result;
+                await cdp("DOM.setFileInputFiles", { nodeId, files: [listedFile, join(dir2, "changed-" + listedName), join(dir2, "unrelated.txt")] });
+                await until(`!/Reading the files/.test(document.querySelector('.ex-files').innerText) && document.querySelectorAll('.ex-files .ex-leg').length>=3`, "the files read");
+                const seen = sent.length;
+                const legs = await ev(`[...document.querySelectorAll('.ex-files .ex-leg')].map(l=>({t:l.querySelector('b').textContent,c:l.querySelector('b').className,p:l.querySelector('p').textContent}))`), at = (t) => legs.find((x) => x.t === t);
+                must(at(listedName)?.c === "ex-ok" && /This is the file signed with the message/.test(at(listedName).p), `the file it lists (${listedName}) is the one signed, hashed here`);
+                must(at("changed-" + listedName)?.c === "ex-bad" && /was not signed with the message/.test(at("changed-" + listedName).p), "CONTROL: a copy with one byte changed is said not signed");
+                must(at("unrelated.txt")?.c === "ex-bad" && /was not signed with the message/.test(at("unrelated.txt").p), "CONTROL: an unrelated file is said not signed");
+                must(seen === 0, `no request while the files were read and compared (${seen})`);
+                await shot("20-bmail-found-files"); await noSideways("the found B-Mail's files");
+                await cdp("Network.disable");
+                await ev(`document.querySelector('button[data-lang=km]').click()`);
+                await until(`document.documentElement.lang==='km' && /ឯកសារដែលបានចុះហត្ថលេខាជាមួយវា/.test(document.querySelector('main').innerText) && document.querySelectorAll('.ex-files .ex-leg').length>=3`, "the found B-Mail in Khmer");
+                const km = await ev(`[...document.querySelectorAll('.ex-files .ex-leg')].map(l=>({t:l.querySelector('b').textContent,c:l.querySelector('b').className,p:l.querySelector('p').textContent}))`);
+                must(km.find((x) => x.t === listedName)?.c === "ex-ok" && /នេះគឺជាឯកសារដែលបានចុះហត្ថលេខាជាមួយសារ/.test(km.find((x) => x.t === listedName).p) && km.filter((x) => /មិនត្រូវបានចុះហត្ថលេខាជាមួយសារទេ/.test(x.p)).length === 2, "in Khmer, after the page repaints, the same three files say the same");
+                await shot("21-bmail-found-files-km"); await ev(`document.querySelector('button[data-lang=en]').click()`);
+            }
+        }
     }
     must(errors.length === 0, `browser errors: ${errors.length ? errors.slice(0, 4).join(" || ").slice(0, 700) : "none"}`);
 } catch (e) { console.log("FAILED:", e.message.slice(0, 900)); code = 1; }

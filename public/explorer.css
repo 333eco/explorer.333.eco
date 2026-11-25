@@ -32,3 +32,4 @@ main#view{min-height:100vh;min-height:100svh}
 .ex-table td>a{display:inline-flex;align-items:center;min-width:24px;min-height:24px}.app>main>a:not(.btn),.ex-leg p>a{display:inline-block;padding:3px 0}
 /* On a phone a label sits over its value: a two-column list squeezed its values beside a 110 px label (founder 2026-11-20, tables on phones). */
 @media (max-width:600px){.ex-kv{grid-template-columns:1fr;gap:2px}.ex-kv dd{margin-bottom:10px}}
+.ex-files.ex-over{outline:2px dashed var(--accent);outline-offset:4px}
