@@ -1,0 +1,73 @@
+[
+ {
+  "f": {
+   "fromName": "Test Sender",
+   "from": "sender@example.com",
+   "to": "someone@example.com",
+   "cc": "",
+   "subject": "The report",
+   "body": "Attached.\n\n— Test",
+   "name": ""
+  },
+  "salt": "0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+  "files": [
+   {
+    "name": "report.pdf",
+    "b64": "JVBERi0xLjQgdGVzdAo="
+   }
+  ],
+  "filenamesAsMimeCarries": [
+   "report.pdf"
+  ],
+  "want": "b-mail/v1\nfrom: Test Sender <sender@example.com>\nto: someone@example.com\nsubject: The report\nsalt: 0f1e2d3c4b5a69788796a5b4c3d2e1f0\nattachment: 4c413baa5077fb8da875ce0da74321c6c69aa6f473707d044ac8a2159085e50e report.pdf\n\nAttached.\n\n— Test\n"
+ },
+ {
+  "f": {
+   "fromName": "Sokha Keo",
+   "from": "sokha@example.org",
+   "to": "a@example.com",
+   "cc": "c@example.com",
+   "subject": "ឯកសារ",
+   "body": "សួស្តី",
+   "name": "@sokha.keo"
+  },
+  "salt": "00112233445566778899aabbccddeeff",
+  "files": [
+   {
+    "name": "ឯកសារ.txt",
+    "b64": "4Z6f4Z694Z6f4Z+S4Z6P4Z64Cg=="
+   },
+   {
+    "name": "empty.bin",
+    "b64": ""
+   }
+  ],
+  "filenamesAsMimeCarries": [
+   "ឯកសារ.txt",
+   "empty.bin"
+  ],
+  "want": "b-mail/v1\nfrom: Sokha Keo <sokha@example.org>\nto: a@example.com\ncc: c@example.com\nsubject: ឯកសារ\nname: @sokha.keo\nsalt: 00112233445566778899aabbccddeeff\nattachment: 9228b2991cae6d9c2987b40b4334f55e54fcef136c01e26b252189a82d501804 ឯកសារ.txt\nattachment: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 empty.bin\n\nសួស្តី\n"
+ },
+ {
+  "f": {
+   "fromName": "",
+   "from": "solo@example.com",
+   "to": "x@example.com",
+   "cc": "",
+   "subject": "names",
+   "body": "one line",
+   "name": ""
+  },
+  "salt": "ffffffffffffffffffffffffffffffff",
+  "files": [
+   {
+    "name": "  two   spaces\tand tab .pdf ",
+    "b64": "eA=="
+   }
+  ],
+  "filenamesAsMimeCarries": [
+   "two   spaces\tand tab .pdf"
+  ],
+  "want": "b-mail/v1\nfrom: solo@example.com\nto: x@example.com\nsubject: names\nsalt: ffffffffffffffffffffffffffffffff\nattachment: 2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881 two spaces and tab .pdf\n\none line\n"
+ }
+]

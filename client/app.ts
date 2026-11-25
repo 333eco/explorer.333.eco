@@ -9,6 +9,8 @@ import { matchWaiting, readWaiting as readWaitingFrom } from "./waiting";
 import { INVITE_HREF, SIGN_HREF, invitationFor, maySign } from "./invite";
 import { EMPTY, bundleEntries, decodeMemory, encodeMemory, extend, rootOf, type Edge, type Memory } from "./ledger-memory";
 import { heldStamp, type Held } from "./stamped";
+import { h, isKm, leg, say, short, type Kid } from "./ui";
+import { fileBox, mayShow, type Received } from "./attachments";
 // @ts-expect-error the same
 import { canvasDecoder, hashFile, phashDistance } from "@333eco/origin-verify/media";
 // @ts-expect-error the same
@@ -19,22 +21,8 @@ const LOG = "https://log.333.eco/origin/", INDEX = "https://corpus.333.eco/prove
 // other script runs (the analytics beacons load deferred), so no server, beacon or history entry keeps it (founder 2026-11-12).
 const BMAIL_HASH = location.pathname.replace(/\/+$/, "") === "/b-mail" ? location.hash.slice(1) : "";
 if (BMAIL_HASH) history.replaceState(null, "", location.pathname);
-const isKm = () => document.documentElement.lang === "km";
-const say = (en: string, km: string) => (isKm() ? km : en);
 const view = { el: document.getElementById("view") as HTMLElement, replaceChildren(...kids: Kid[]) { this.el.replaceChildren(...(kids.filter(Boolean) as (Node | string)[])); } }; // a null handed to the DOM prints "null"
-type Kid = Node | string | null | undefined | false;
-function h(tag: string, attrs: Record<string, string | boolean | ((e: any) => void)> = {}, ...kids: Kid[]) {
-    const n = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs)) {
-        if (typeof v === "function") n.addEventListener(k.slice(2), v as EventListener);
-        else if (v === true) n.setAttribute(k, "");
-        else if (v !== false) n.setAttribute(k, v);
-    }
-    n.append(...(kids.filter(Boolean) as (Node | string)[]));
-    return n;
-}
 const link = (href: string, ...kids: Kid[]) => h("a", { href, ...(href.startsWith("http") ? { rel: "noopener" } : {}) }, ...kids);
-const short = (s: string) => `${s.slice(0, 4)} ${s.slice(4, 8)} ${s.slice(8, 12)} … ${s.slice(-4)}`;
 const full = (s: string) => s.replace(/(.{4})/g, "$1 ").trim();
 // The index carries a few dates in words ("9 June 2026"). As text they sort above every ISO date, and parsed as local time they read a day early east of UTC.
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
@@ -71,7 +59,6 @@ function prefetching(get: (p: string) => Promise<Uint8Array | null>, paths: stri
 const text = (b: Uint8Array) => new TextDecoder().decode(b);
 const head = (title: string, lede?: string) => h("div", {}, h("h1", {}, title), lede ? h("p", { class: "lede" }, lede) : null);
 const card = (...kids: Kid[]) => h("div", { class: "card" }, ...kids);
-const leg = (ok: boolean | null, title: string, ...body: Kid[]) => h("div", { class: "ex-leg" }, h("b", { class: ok === true ? "ex-ok" : ok === false ? "ex-bad" : "" }, title), h("p", {}, ...body));
 const blockLink = (height: number) => link(`https://mempool.space/block/${height}`, say(`Block ${n(height)}`, `ប្លុក ${n(height)}`));
 const source = (url: string) => link(url, say("Source", "ប្រភព"));
 /** The public tile that holds an entry: 256 entries a tile, the last one partial (C2SP tlog-tiles). */
@@ -255,6 +242,8 @@ function results() {
  * message as it was signed. ⭐ A link copied into another mail still shows THIS message, which is how a copy is told apart: the page
  * says to compare. ⛔ Never "verified": it says which passkey signed and what that page shows.
  */
+// The files a reader chose on this page (./attachments), kept here so a repaint (the language toggle) keeps them. Never sent anywhere.
+const bmailFiles: Received[] = [];
 async function bmailPage() {
     const title = head(say("A B-Mail", "B-Mail មួយ"), say("The exact message that was signed, checked in your browser just now. Compare it with the mail you received.", "សារពិតប្រាកដដែលបានចុះហត្ថលេខា ដែលបានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នកមុននេះ។ សូមប្រៀបធៀបវាជាមួយសំបុត្រដែលអ្នកបានទទួល។"));
     view.replaceChildren(title, card(h("p", { role: "status" }, say("Checking this message…", "កំពុងពិនិត្យសារនេះ…"))));
@@ -292,6 +281,9 @@ async function bmailPage() {
     // The invitation, stated once, on this page and never in the mail (§b-mail-viral-loop; invite.ts says when it may show).
     const inviteAt = invitationFor(text, !!entry, !!gone);
     view.replaceChildren(title, card(...rows), card(h("dl", { class: "ex-kv" }, ...kv), h("pre", { class: "ex-mail" }, body)),
+        // 2026-11-25 (founder: "Attachments: agree"): the files the statement lists, compared with the reader's own, on this device.
+        // Only beside a found record: with none, nothing was signed to compare with. A withdrawn one keeps it (it was signed).
+        mayShow(text, !!entry) ? fileBox(text, bmailFiles) : null,
         // The checker is whatever page a mail links to, so the page says where it is (founder 2026-11-14, after a counterexample pass).
         h("p", { class: "fine" }, say("This check runs in your browser at explorer.333.eco. A page at any other address, however alike it looks, is not this check. It shows that a passkey signed these words, never that a person did.",
             "ការពិនិត្យនេះដំណើរការក្នុងកម្មវិធីរុករករបស់អ្នកនៅ explorer.333.eco។ ទំព័រនៅអាសយដ្ឋានផ្សេង ទោះមើលទៅដូចគ្នាយ៉ាងណាក៏ដោយ មិនមែនជាការពិនិត្យនេះទេ។ វាបង្ហាញថា passkey មួយបានចុះហត្ថលេខាលើពាក្យទាំងនេះ មិនមែនថាមនុស្សម្នាក់បានធ្វើទេ។")),
