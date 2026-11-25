@@ -86,6 +86,10 @@ add("a malformed attachment line stays listed and can never be matched", async (
     const l = m.listed(t), c = m.compare(l, [{ name: "x", sha256: sha(bytes(V[2].files[0])) }]);
     return l.length === 1 && l[0].sha256 === "not-a-hash" && !c.rows[0].file;
 });
+add("a hash written in capitals is the same SHA-256, and matches", async (m) => {
+    const t = V[0].want.replace(/attachment: ([0-9a-f]{64})/, (_, x) => `attachment: ${x.toUpperCase()}`);
+    return !!m.compare(m.listed(t), [{ name: "report.pdf", sha256: sha(bytes(V[0].files[0])) }]).rows[0].file;
+});
 add("not a B-Mail: nothing is listed", async (m) => m.listed(V[0].want.replace("b-mail/v1\n", "b-post/v1\n")).length === 0);
 
 const failed = async (m) => { const out = []; for (const [why, t] of CASES) if (!(await t(m).catch(() => false))) out.push(why); return out; };

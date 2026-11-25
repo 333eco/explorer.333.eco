@@ -10,7 +10,8 @@
  * ⛔ Never "verified", never a person: it says which file is the one signed, and which was not signed with the message.
  * The statement is read as the mail skill's bmail_mismatch and developers.333.eco's compareMessage read it: the head is what precedes
  * the first blank line after `b-mail/v1`, each line's key is what precedes its first ": ", and a file's SHA-256 is its value's first
- * word. Hashes are compared lowercased (as compareMessage does).
+ * word. Hashes are compared lowercased (as compareMessage does; the mail skill's bmail_mismatch compares them as written).
+ * DRAFT Khmer (ours).
  */
 import { h, leg, say, short } from "./ui";
 
