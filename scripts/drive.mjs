@@ -435,7 +435,7 @@ try {
             const ots = Buffer.from(await (await fetch("https://raw.githubusercontent.com/thonly/publications/main/about/the-founder.md.ots")).arrayBuffer());
             const otherOts = Buffer.from(await (await fetch(`https://raw.githubusercontent.com/333eco/legal-versions/main/${v.path}.ots`)).arrayBuffer());
             const s = createHash("sha256").update(text).digest("hex"), id = `2026-09-01-${s.slice(0, 6)}`, path = `earth.333.eco/terms/${id}.md`;
-            const forged = { ...index, documents: [{ ...d, versions: [...d.versions, { ...v, id, date: "2026-09-01", dateLine: "Draft of 1 September 2026.", sha256: s, path, firstServed: "2026-09-01" }] }] };
+            const forged = { ...index, documents: [{ ...d, versions: [...d.versions, { ...v, id, date: "2026-09-01", dateLine: "Draft of 1 September 2026.", sha256: s, path, firstServed: "2026-09-01", review: { date: "2027-01-12" } }] }] }; // a review record too (E10): none exists live yet
             let served = { text, ots };
             forge = async (url) => url.endsWith("/legal-versions/main/index.json") ? { body: JSON.stringify(forged) } : url.endsWith(`/${path}`) ? { body: served.text } : url.endsWith(`/${path}.ots`) ? { body: served.ots } : undefined;
             await cdp("Fetch.enable", { patterns: [{ urlPattern: "*raw.githubusercontent.com/333eco/legal-versions/*" }] });
@@ -444,6 +444,8 @@ try {
             must(of("Bitcoin")?.ok === "ex-ok" && /^Block 967,728\. The proof leads from this text to this block, whose header was read from mempool\.space just now\. Mined/.test(of("Bitcoin").p), `a confirmed proof is taken to its block and ticked, in the papers' words (${of("Bitcoin")?.p.slice(0, 50)})`);
             must(/existed by Sep \d{1,2}, 2026\./.test(await ev(`document.querySelector('main .ex-limit').innerText`)), "and the limit gives the block's date");
             must(of("Timestamp authorities")?.ok === "" && /No manifest read here just now lists this version/.test(of("Timestamp authorities").p), "a version no manifest lists says so, unticked, with the manifests linked");
+            const rev = of("The review record");
+            must(!!rev && rev.ok === "" && /^Entered Jan 12, 2027, when a lawyer reviewed this version/.test(rev.p) && /It records that the review happened\. It does not show what the lawyer advised\./.test(rev.p), `CONTROL for "none is shown": a version with a review record shows its row, dated, with its limit, and not ticked (${rev?.p.slice(0, 70)})`);
             await shot("25-legal-block");
             served = { text: Buffer.from(text), ots }; served.text[served.text.length - 5] ^= 1;
             await go(page); await until(settled, "the same, with one byte changed in its text"); L = await legs();
