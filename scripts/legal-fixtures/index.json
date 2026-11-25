@@ -1,0 +1,79 @@
+{
+  "v": 1,
+  "repo": "333eco/legal-versions",
+  "branch": "main",
+  "documents": [
+    {
+      "host": "earth.333.eco",
+      "body": "HeartBank®",
+      "doc": "terms",
+      "title": "Terms of service",
+      "versions": [
+        {
+          "id": "2026-11-09-ab4e2e",
+          "dateLine": "Draft of 9 November 2026.",
+          "date": "2026-11-09",
+          "sha256": "ab4e2ecb4dbb1c633abd76b0af92b37c166e42807f360afb31984e6e8fdf66e5",
+          "path": "earth.333.eco/terms/2026-11-09-ab4e2e.md",
+          "operator": null,
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": "earth.333.eco",
+      "body": "HeartBank®",
+      "doc": "privacy",
+      "title": "Privacy policy",
+      "versions": [
+        {
+          "id": "2026-11-09-5d3547",
+          "dateLine": "Draft of 9 November 2026.",
+          "date": "2026-11-09",
+          "sha256": "5d354798c5bbb1ef6d659f05d45c66c3a5cbeb71664d9fadee4c8aba4d4ec1dc",
+          "path": "earth.333.eco/privacy/2026-11-09-5d3547.md",
+          "operator": null,
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": "developers.333.eco",
+      "body": "333.eco · shared services",
+      "doc": "terms",
+      "title": "Developer terms",
+      "versions": [
+        {
+          "id": "2026-11-25-5bb210",
+          "dateLine": "Draft of 25 November 2026.",
+          "date": "2026-11-25",
+          "sha256": "5bb210f4c0cde0a368b50cbc80178fb421b7b1a18a766fb635f0376b454b38e1",
+          "path": "developers.333.eco/terms/2026-11-25-5bb210.md",
+          "operator": "Lucky Fate LLC",
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": "developers.333.eco",
+      "body": "333.eco · shared services",
+      "doc": "privacy",
+      "title": "Privacy policy",
+      "versions": [
+        {
+          "id": "2026-11-25-2c9b38",
+          "dateLine": "Draft of 25 November 2026.",
+          "date": "2026-11-25",
+          "sha256": "2c9b389422eeaf77b825169f8eb62d9721fbbfc57be0caa7a898385e3a70d27b",
+          "path": "developers.333.eco/privacy/2026-11-25-2c9b38.md",
+          "operator": "Lucky Fate LLC",
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    }
+  ]
+}
