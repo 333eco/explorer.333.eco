@@ -59,14 +59,41 @@ add("a file with a listed file's NAME but other bytes is not matched", async (m)
     const c = m.compare(m.listed(V[0].want), [{ name: "report.pdf", sha256: sha(Buffer.from("a different report")) }]);
     return !c.rows[0].file && c.unsigned.length === 1;
 });
-add("the carrier files (B-Mail.txt, b-mail.txt, B-Mail-proof.json) are not the message's files: neither matched nor said unsigned", async (m) => {
-    const got = ["B-Mail.txt", "b-mail.txt", "B-Mail-proof.json"].map((name) => ({ name, sha256: sha(Buffer.from(name)) }));
+// ⭐ The founder's rule, 2026-11-25 ("3: agree"), one rule in all three checkers: leaving out any file NAMED b-mail.txt or
+//    b-mail-proof.json (any case), the files received are exactly the listed fingerprints as a MULTISET, compared in lowercase.
+add("the reserved names (B-Mail.txt, b-mail.txt, B-Mail-proof.json, B-MAIL-PROOF.JSON) are left out: neither matched nor said unsigned", async (m) => {
+    const got = ["B-Mail.txt", "b-mail.txt", "B-Mail-proof.json", "B-MAIL-PROOF.JSON"].map((name) => ({ name, sha256: sha(Buffer.from(name)) }));
     const c = m.compare(m.listed(V[0].want), got);
-    return !c.unsigned.length && c.carriers.length === 3 && !c.rows[0].file;
+    return !c.unsigned.length && c.carriers.length === 4 && !c.rows[0].file;
 });
-add("a listed file is matched by its SHA-256 whatever its name, the carriers' names too", async (m) => {
+add("a reserved name is left out BY NAME, even when its bytes are a listed file's", async (m) => {
     const c = m.compare(m.listed(V[0].want), [{ name: "B-Mail.txt", sha256: sha(bytes(V[0].files[0])) }]);
-    return !!c.rows[0].file && !c.carriers.length && !c.unsigned.length;
+    return !c.rows[0].file && c.carriers.length === 1 && !c.unsigned.length;
+});
+add("a hash listed twice needs two files: one file matches one line, the other stays unmatched", async (m) => {
+    const line = V[0].want.match(/^attachment: .*\n/m)[0], c = m.compare(m.listed(V[0].want.replace(line, line + line)), [{ name: "report.pdf", sha256: sha(bytes(V[0].files[0])) }]);
+    return c.rows.length === 2 && c.rows.filter((r) => r.file).length === 1 && !c.unsigned.length;
+});
+add("a hash listed twice, and two copies received: both lines match", async (m) => {
+    const line = V[0].want.match(/^attachment: .*\n/m)[0], h = sha(bytes(V[0].files[0]));
+    const c = m.compare(m.listed(V[0].want.replace(line, line + line)), [{ name: "report.pdf", sha256: h }, { name: "report copy.pdf", sha256: h }]);
+    return c.rows.every((r) => r.file) && c.rows[0].file !== c.rows[1].file && !c.unsigned.length;
+});
+add("two copies of a file listed once: one matches, the other is one too many and is said not signed", async (m) => {
+    const h = sha(bytes(V[0].files[0])), c = m.compare(m.listed(V[0].want), [{ name: "report.pdf", sha256: h }, { name: "report copy.pdf", sha256: h }]);
+    return !!c.rows[0].file && c.unsigned.length === 1 && c.unsigned[0].sha256 === h;
+});
+// The acceptance table (evidence/twin/edges-result.txt): "the files are exactly those signed" must now read as statement.ts reads it.
+const exactly = (c) => c.rows.every((r) => r.file) && !c.unsigned.length;
+add("acceptance: the four cases where the checkers had disagreed now give statement.ts's answers (differs, differs, differs, all match)", async (m) => {
+    const v = V[0], f = bytes(v.files[0]), h = sha(f), line = `attachment: ${h} report.pdf\n`;
+    const got = [
+        exactly(m.compare(m.listed(v.want.replace(line, line + line)), [{ name: "report.pdf", sha256: h }])),
+        exactly(m.compare(m.listed(v.want), [{ name: "report.pdf", sha256: h }, { name: "report copy.pdf", sha256: h }])),
+        exactly(m.compare(m.listed(v.want), [{ name: "B-Mail.txt", sha256: h }])),
+        exactly(m.compare(m.listed(v.want.replace(h, h.toUpperCase())), [{ name: "report.pdf", sha256: h }])),
+    ];
+    return JSON.stringify(got) === JSON.stringify([false, false, false, true]);
 });
 add("a statement with no attachment lines lists no files, so no file box shows", async (m) => {
     const plain = "b-mail/v1\nfrom: A <a@x.test>\nto: b@x.test\nsubject: hi\nsalt: 00112233445566778899aabbccddeeff\n\nHello.\n";
@@ -110,14 +137,18 @@ must(WORDS.test(await bundle(`export * from "./attachments"; export const w = "V
 // Controls: careless versions must fail the cases above, so the cases can fail.
 const careless = {
     "matches by name": await load(`export * from "./attachments"; import * as a from "./attachments";
-        export const compare = (l, got) => { const c = a.compare(l, got); for (const r of c.rows) r.file = got.find((f) => f.name.trim() === r.item.name) ?? null; c.unsigned = got.filter((f) => !l.some((x) => x.name === f.name.trim()) && !a.CARRIERS.includes(f.name)); return c; };`),
+        export const compare = (l, got) => { const c = a.compare(l, got); for (const r of c.rows) r.file = got.find((f) => f.name.trim() === r.item.name) ?? null; c.unsigned = got.filter((f) => !l.some((x) => x.name === f.name.trim()) && !a.isReserved(f.name)); return c; };`),
     "reads the whole text, body included": await load(`export * from "./attachments";
         export const listed = (t) => t.startsWith("b-mail/v1\\n") ? [...t.matchAll(/^attachment: (\\S+) (.*)$/gm)].map((m) => ({ sha256: m[1], name: m[2] })) : [];`),
-    "drops the carriers by name first, and shows a box with no record": await load(`export * from "./attachments"; import * as a from "./attachments";
-        export const compare = (l, got) => a.compare(l, got.filter((f) => !a.CARRIERS.includes(f.name)));
+    "compares as a set (any file with a listed hash matches every line with it, and is never one too many)": await load(`export * from "./attachments"; import * as a from "./attachments";
+        export const compare = (l, got) => { const c = a.compare(l, got); const hs = new Set(got.filter((f) => !a.isReserved(f.name)).map((f) => f.sha256)); for (const r of c.rows) r.file = got.find((f) => !a.isReserved(f.name) && f.sha256 === r.item.sha256.toLowerCase()) ?? null; c.unsigned = got.filter((f) => !a.isReserved(f.name) && !l.some((x) => x.sha256.toLowerCase() === f.sha256)); return c; };`),
+    "lets a reserved name through when its bytes are listed, and shows a box with no record": await load(`export * from "./attachments"; import * as a from "./attachments";
+        export const compare = (l, got) => { const ok = new Set(l.map((x) => x.sha256.toLowerCase())); const c = a.compare(l, got.map((f) => ok.has(f.sha256) ? { ...f, name: "renamed-" + f.name } : f)); return c; };
         export const mayShow = (t) => a.listed(t).length > 0;`),
     "keeps only well-formed lines": await load(`export * from "./attachments"; import * as a from "./attachments";
         export const listed = (t) => a.listed(t).filter((x) => /^[0-9a-f]{64}$/.test(x.sha256));`),
+    "compares hashes as written": await load(`export * from "./attachments"; import * as a from "./attachments";
+        export const compare = (l, got) => a.compare(l.map((x) => ({ ...x, sha256: x.sha256 === x.sha256.toLowerCase() ? x.sha256 : "x" + x.sha256 })), got);`),
 };
 for (const [name, m] of Object.entries(careless)) {
     const miss = await failed(m);

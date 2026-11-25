@@ -5,12 +5,15 @@
  * drops the files that came with the mail, and each is hashed HERE.
  * ⛔ A file is never uploaded and never sent anywhere: this module names no way to reach the network (held by
  *    scripts/check-attachments.mjs on what is built, and by scripts/drive.mjs in real Chrome).
- * ⭐ Compared by SHA-256 only: the name is informative, since a mail app can change it. The carrier files (B-Mail.txt, the first
- *    mails' b-mail.txt, B-Mail-proof.json) are not the message's files and are never counted, unless their bytes are a listed file's.
+ * ⭐ The rule, one in all three checkers (founder 2026-11-25, "3: agree"; the mail skill's bmail_mismatch and developers.333.eco's
+ *    compareMessage): leaving out every file NAMED b-mail.txt or b-mail-proof.json, in any case (the carriers; sign.333.eco refuses
+ *    those names at signing), the files received are exactly the listed fingerprints as a MULTISET, compared in lowercase. So a hash
+ *    listed twice needs two files, and a second copy of a file listed once is one too many. Otherwise the name is informative only,
+ *    since a mail app can change it.
  * ⛔ Never "verified", never a person: it says which file is the one signed, and which was not signed with the message.
  * The statement is read as the mail skill's bmail_mismatch and developers.333.eco's compareMessage read it: the head is what precedes
  * the first blank line after `b-mail/v1`, each line's key is what precedes its first ": ", and a file's SHA-256 is its value's first
- * word. Hashes are compared lowercased (as compareMessage does; the mail skill's bmail_mismatch compares them as written).
+ * word.
  * DRAFT Khmer (ours).
  */
 import { h, leg, say, short } from "./ui";
@@ -18,7 +21,9 @@ import { h, leg, say, short } from "./ui";
 export interface Listed { sha256: string; name: string }
 /** A file the reader chose: its SHA-256 here, or null when it couldn't be read. */
 export interface Received { name: string; sha256: string | null }
-export const CARRIERS = ["B-Mail.txt", "b-mail.txt", "B-Mail-proof.json"];
+/** The carriers' names, in lowercase: a file so named is left out BY NAME, whatever its bytes. */
+export const CARRIERS = ["b-mail.txt", "b-mail-proof.json"];
+export const isReserved = (name: string) => CARRIERS.includes(name.toLowerCase());
 
 /** The files a b-mail/v1 statement lists, in order. A line that is malformed stays listed, and can never be matched. */
 export function listed(statement: string): Listed[] {
@@ -40,15 +45,18 @@ export const mayShow = (statement: string, found: boolean) => found && listed(st
 const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 export const sha256Hex = async (bytes: Uint8Array) => hex(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes as BufferSource)));
 
-/** Each listed file and the chosen file that has its SHA-256 (or null); the chosen files that are not listed, by kind. */
+/**
+ * Each listed line and the ONE chosen file assigned to it (or null), in order: a file is assigned to at most one line. The files left
+ * over are not signed with the message (an extra copy of a listed file too); the carriers are left out by name.
+ */
 export function compare(list: Listed[], got: Received[]) {
-    const signed = new Set(list.map((x) => x.sha256.toLowerCase()));
-    return {
-        rows: list.map((item) => ({ item, file: got.find((f) => f.sha256 !== null && f.sha256 === item.sha256.toLowerCase()) ?? null })),
-        unread: got.filter((f) => f.sha256 === null),
-        carriers: got.filter((f) => f.sha256 !== null && !signed.has(f.sha256) && CARRIERS.includes(f.name)),
-        unsigned: got.filter((f) => f.sha256 !== null && !signed.has(f.sha256) && !CARRIERS.includes(f.name)),
-    };
+    const carriers = got.filter((f) => isReserved(f.name)), unread = got.filter((f) => !isReserved(f.name) && f.sha256 === null);
+    const pool = got.filter((f) => !isReserved(f.name) && f.sha256 !== null);
+    const rows = list.map((item) => {
+        const i = pool.findIndex((f) => f.sha256!.toLowerCase() === item.sha256.toLowerCase());
+        return { item, file: i < 0 ? null : pool.splice(i, 1)[0] };
+    });
+    return { rows, unread, carriers, unsigned: pool };
 }
 
 /**
@@ -86,7 +94,7 @@ export function fileBox(statement: string, kept: Received[]): HTMLElement | null
                     file.name !== item.name ? say(` You chose it as “${file.name}”.`, ` អ្នកបានជ្រើសរើសវាជា “${file.name}”។`) : "")
                 : leg(null, item.name || short(item.sha256), any ? say("None of the files you chose has this fingerprint: ", "គ្មានឯកសារណាមួយដែលអ្នកបានជ្រើសរើសមានស្នាមម្រាមដៃនេះទេ៖ ") : say("Fingerprint ", "ស្នាមម្រាមដៃ "), h("span", { class: "ex-mono" }, short(item.sha256)))),
             ...c.unsigned.map((f) => leg(false, f.name, say("This file was not signed with the message.", "ឯកសារនេះមិនត្រូវបានចុះហត្ថលេខាជាមួយសារទេ។"))),
-            ...c.carriers.map((f) => leg(null, f.name, say("This file carries the signature itself. It is not one of the message's files.", "ឯកសារនេះផ្ទុកហត្ថលេខាខ្លួនឯង។ វាមិនមែនជាឯកសារមួយរបស់សារនោះទេ។"))),
+            ...c.carriers.map((f) => leg(null, f.name, say("A file with this name carries the signature. It is not one of the message's files.", "ឯកសារដែលមានឈ្មោះនេះផ្ទុកហត្ថលេខា។ វាមិនមែនជាឯកសារមួយរបស់សារនោះទេ។"))),
             ...c.unread.map((f) => leg(null, f.name, say("That file couldn't be read.", "មិនអាចអានឯកសារនោះបានទេ។"))),
         ].filter((x): x is HTMLElement => !!x));
     };

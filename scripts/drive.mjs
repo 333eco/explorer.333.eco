@@ -445,6 +445,12 @@ try {
         await ev(`document.documentElement.lang='km';document.getElementById('view').replaceChildren(__att.fileBox(${JSON.stringify(V[2].want)},window.__kept))`);
         r = await rows(); must(r[0].ok === "ex-ok" && /នេះគឺជាឯកសារដែលបានចុះហត្ថលេខាជាមួយសារ/.test(r[0].p) && /ឯកសារដែលបានចុះហត្ថលេខាជាមួយវា/.test(await body()), "in Khmer, and the file chosen is kept through a repaint");
         await shot("19-bmail-files-km"); await ev(`document.documentElement.lang='en'`);
+        // The founder's rule (2026-11-25, "3: agree"): a MULTISET, and the carriers' names left out by name, whatever their bytes.
+        await mount(0); await drop([file("report.pdf", V[0].files[0].b64), file("report copy.pdf", V[0].files[0].b64)]); await settled(2); r = await rows();
+        must(r.find((x) => x.t === "report.pdf")?.ok === "ex-ok" && r.find((x) => x.t === "report copy.pdf")?.ok === "ex-bad", "two copies of a file listed once: one is the file signed, the other is said not signed");
+        await mount(0); await drop([file("B-MAIL.TXT", V[0].files[0].b64)]); await settled(1); r = await rows();
+        must(r.find((x) => x.t === "report.pdf")?.ok === "" && /carries the signature/.test(r.find((x) => x.t === "B-MAIL.TXT")?.p ?? ""), "a file named B-MAIL.TXT is left out by its name, though its bytes are the listed file's");
+        must(sent.length === 0, `no request while those files were read either (${sent.length})`);
         const words = await ev(`document.querySelector('.ex-files').innerText`); must(!/verif|person|human/i.test(words), "its words never say verified, never a person");
         // CONTROL: the request probe sees a request carrying a file's fingerprint when one is made.
         await ev(`fetch('/favicon.svg?f=${V[2].want.match(/[0-9a-f]{64}/)[0]}').catch(()=>{})`); await sleep(300);
