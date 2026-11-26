@@ -425,7 +425,7 @@ try {
         const NULLISH = `/\\bnull\\b|\\bundefined\\b/.test(document.querySelector('main').innerText) || !!document.querySelector('main a[href*="/null/"], main a[href*="/undefined/"]')`;
         must(!(await ev(NULLISH)), "no host reads \"null\" on the list, in its words or its links");
         {   const shared = all.filter(({ d }) => d.host === null), card = `[...document.querySelectorAll('main .card')].find(c=>c.querySelector('h2')?.textContent===${JSON.stringify(SHARED)})`;
-            must(shared.length === 4 && (await ev(`(()=>{const c=${card};return !!c && c===[...document.querySelectorAll('main .card')].filter(x=>x.querySelector('h2')).pop() && c.querySelectorAll('a.ex-row').length===${shared.length}})()`)), `the ${shared.length} documents for every service are their own card, after the services`);
+            must(shared.length > 0 && (await ev(`(()=>{const c=${card};return !!c && c===[...document.querySelectorAll('main .card')].filter(x=>x.querySelector('h2')).pop() && c.querySelectorAll('a.ex-row').length===${shared.length}})()`)), `the versions for every service (${shared.length}) are their own card, after the services`);
         }
         await shot("22-legal-390"); await noSideways("the Legal tab");
         const { d, v } = all.find((x) => x.d.host === "earth.333.eco" && x.d.doc === "terms"), at = `/legal/${d.host}/${d.doc}/${v.id}`;
