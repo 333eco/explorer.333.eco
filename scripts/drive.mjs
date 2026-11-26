@@ -385,6 +385,21 @@ try {
     await ev(`document.querySelector('button[data-lang=km]').click()`); await until(`document.documentElement.lang==='km' && /ត្រាពេលវេលា/.test(document.querySelector('main').innerText)`, "Khmer"); await sleep(1500); await shot("6-doc-km");
     await go("/origin"); await until(`document.querySelector('table')`, "records in Khmer"); await shot("7-origin-km"); await ev(`document.querySelector('button[data-lang=en]').click()`); await until(`document.querySelector('table')`, "records"); await dark(true); await shot("8-origin-dark"); await dark(false);
     await size(1280, 800, false); await go("/corpus"); await until(`document.querySelector('.ex-doc')`, "desktop corpus"); await shot("9-corpus-desktop");
+    {   // The Legal tab's code and words are their own chunk, fetched only when /legal opens (founder 2026-11-25: the first load stood at
+        // 70.8 KB gzip against its 71.1 KB budget). app.js names the chunk by the hash of the file served (the zone's 4-hour cache), and
+        // the other pages never fetch it.
+        const app = readFileSync(join(root, "app.js"), "utf8"), named = /"(\/legal-tab\.js\?v=([0-9a-f]{10}))"/.exec(app), chunk = join(root, "legal-tab.js");
+        must(!!named && existsSync(chunk) && createHash("sha256").update(readFileSync(chunk)).digest("hex").startsWith(named[2]), `app.js names the Legal tab's chunk by the hash of the file served (${named?.[1] ?? "none named"})`);
+        const LEGAL_ONLY = /333eco\/legal-versions|អ្វីដែលនេះបង្ហាញ/;
+        must(!LEGAL_ONLY.test(app) && existsSync(chunk) && LEGAL_ONLY.test(readFileSync(chunk, "utf8")), "the Legal tab's words are in its chunk, not in the first load");
+        await cdp("Network.enable"); sent.length = 0;
+        await size(390, 844, true); await go("/origin"); await until(`document.querySelector('table')`, "the records");
+        await go("/corpus"); await until(`document.querySelector('.ex-doc')`, "the corpus");
+        must(sent.length > 0 && !sent.some((x) => /\/legal-tab\.js/.test(x)), `no other page fetches it (/origin, /corpus: ${sent.length} requests)`);
+        await ev(`document.querySelector('[data-nav=legal]').click()`); await until(`location.pathname==='/legal' && document.querySelector('main .ex-row')`, "the Legal tab, opened from the menu");
+        must(!!named && sent.some((x) => x.startsWith(`http://localhost:8798${named[1]} `)), "opening the Legal tab fetches it, at its hashed address");
+        await cdp("Network.disable");
+    }
     {   // The Legal tab (roadmap A709, founder 2026-11-25: timestamped "like we do for our papers", checked on "a new "Legal" tab page").
         // Against the live public repository 333eco/legal-versions: every version listed by host, each one checked here; then one version,
         // its limit in its own card and "Served from" in another. CONTROLS: one byte changed in the text (no tick, no date); a confirmed
