@@ -28,3 +28,21 @@ export function invitationFor(text: string, found: boolean, withdrawn: boolean):
     if (cut < 0) return null;
     return /^name: (@[A-Za-z0-9._-]{1,64})$/m.exec(text.slice(0, cut + 1))?.[1] ?? null;
 }
+
+/**
+ * The thank back (founder 2026-11-25, B-Mail thanks phase 3, part (a); the board C1 at demo.333.eco). One line, *Thank @x for this
+ * mail*, offered once, after the page's two fine-print lines and before the two invitations.
+ * ⭐ Shown ONLY beside a found record its signer has not withdrawn, whose signed text names an @name AND whose signer check ran on
+ *    this page and PASSED (`signerPassed === true`, the row *Signed with @x's passkey*): the link goes to that same @x.
+ * ⛔ Never beside an unconfirmed name (no proof in the link, or a passkey that page doesn't show: `null`), a proof that doesn't fit
+ *    the record (`false`), a withdrawn record (its signer check can still pass), no record, or a statement with no `name:` line.
+ * ⛔ The link never carries `from=b-mail` (that marker counts the two invitations); it carries `thank=b-mail`, which opens the
+ *    Thank at once on 333.eco, and nothing about the reader or the message. ⛔ No words are ever filled in for the reader.
+ * DRAFT Khmer (ours).
+ */
+export const thankHref = (at: string) => `https://333.eco/${at}?thank=b-mail#thank`;
+export const thankWords = (at: string): [string, string] => [`Thank ${at} for this mail`, `អរគុណ ${at} សម្រាប់សំបុត្រនេះ`];
+export function thankFor(text: string, found: boolean, withdrawn: boolean, signerPassed: boolean | null | undefined): string | null {
+    if (signerPassed !== true) return null;
+    return invitationFor(text, found, withdrawn);
+}

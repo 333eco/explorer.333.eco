@@ -6,7 +6,7 @@
 import { auditLog, checkCheckpoint, checkOts, checkpointBody, checkReveal, checkTimestamp, checkWitnessSignature, findRecords, hashLeaf, packRecord, readEntries, treeRoot, verifyPack } from "@333eco/origin-verify";
 import ledgerTrust from "./ledger-trust";
 import { matchWaiting, readWaiting as readWaitingFrom } from "./waiting";
-import { INVITE_HREF, SIGN_HREF, invitationFor, maySign } from "./invite";
+import { INVITE_HREF, SIGN_HREF, invitationFor, maySign, thankFor, thankHref, thankWords } from "./invite";
 import { EMPTY, bundleEntries, decodeMemory, encodeMemory, extend, rootOf, type Edge, type Memory } from "./ledger-memory";
 import { heldStamp, type Held } from "./stamped";
 import { h, isKm, leg, say, short, type Kid } from "./ui";
@@ -252,6 +252,8 @@ async function bmailPage() {
     if (route().name !== "bmail") return;
     // The invitation, stated once, on this page and never in the mail (§b-mail-viral-loop; invite.ts says when it may show).
     const inviteAt = invitationFor(text, !!entry, !!gone);
+    // The thank back (founder 2026-11-25, B-Mail thanks phase 3 (a)): only when the signer check above ran here and passed, to that name.
+    const thankAt = thankFor(text, !!entry, !!gone, signedAs);
     view.replaceChildren(title, card(...rows), card(h("dl", { class: "ex-kv" }, ...kv), h("pre", { class: "ex-mail" }, body)),
         // 2026-11-25 (founder: "Attachments: agree"): the files the statement lists, compared with the reader's own, on this device.
         // Only beside a found record: with none, nothing was signed to compare with. A withdrawn one keeps it (it was signed).
@@ -260,6 +262,8 @@ async function bmailPage() {
         h("p", { class: "fine" }, say("This check runs in your browser at explorer.333.eco. A page at any other address, however alike it looks, is not this check. It shows that a passkey signed these words, never that a person did.",
             "ការពិនិត្យនេះដំណើរការក្នុងកម្មវិធីរុករករបស់អ្នកនៅ explorer.333.eco។ ទំព័រនៅអាសយដ្ឋានផ្សេង ទោះមើលទៅដូចគ្នាយ៉ាងណាក៏ដោយ មិនមែនជាការពិនិត្យនេះទេ។ វាបង្ហាញថា passkey មួយបានចុះហត្ថលេខាលើពាក្យទាំងនេះ មិនមែនថាមនុស្សម្នាក់បានធ្វើទេ។")),
         h("p", { class: "fine" }, say("A link copied into another mail still shows this message, so what you see here is what was signed.", "តំណដែលបានចម្លងទៅក្នុងសំបុត្រផ្សេងទៀតនៅតែបង្ហាញសារនេះ ដូច្នេះអ្វីដែលអ្នកឃើញនៅទីនេះគឺជាអ្វីដែលបានចុះហត្ថលេខា។")),
+        // Offered once, after the fine print and before the two invitations (board C1); 333.eco opens its own Thank, with no words filled in.
+        ...(thankAt ? [card(h("p", { class: "ex-invite ex-thank" }, link(thankHref(thankAt), say(...thankWords(thankAt)))))] : []),
         ...(inviteAt ? [card(h("p", { class: "ex-invite" },
             say(`${inviteAt} is an @name: a page at 333.eco where people find someone and thank them by name. You can hold your own.`,
                 `${inviteAt} គឺជា @name៖ ទំព័រមួយនៅ 333.eco ដែលមនុស្សស្វែងរកនរណាម្នាក់ ហើយអរគុណគេតាមឈ្មោះ។ អ្នកក៏អាចកាន់ឈ្មោះផ្ទាល់ខ្លួនបានដែរ។`),

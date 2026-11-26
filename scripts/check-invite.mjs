@@ -47,4 +47,33 @@ if (!okHref) code = 1;
 const missed = run(careless);
 console.log(`${missed.length >= 3 ? "ok  " : "FAIL"} control: a version without the guards fails ${missed.length} of ${CASES.length} cases`);
 if (missed.length < 3) code = 1;
+
+// The thank back (founder 2026-11-25, B-Mail thanks phase 3 (a); board C1): beside a found, unwithdrawn record whose signer check PASSED
+// on this page, to that same @name. The fourth argument is the signer check's result: true passed, null not confirmed, false failed.
+const call = (m, f, ...a) => { try { return typeof m[f] === "function" ? m[f](...a) : `(no ${f})`; } catch (e) { return `(threw: ${e.message})`; } };
+const THANK = [
+    ["a found record whose signer check passed: the thank line, to that @name", [MAIL, true, false, true], "@sokha.keo"],
+    ["the name not confirmed (no proof in the link, or a passkey that page doesn't show): none", [MAIL, true, false, null], null],
+    ["a proof that doesn't fit the record (the comparison failed): none", [MAIL, true, false, false], null],
+    ["no signer check ran at all: none", [MAIL, true, false, undefined], null],
+    ["withdrawn by its signer, though its signer check passed: none", [MAIL, true, true, true], null],
+    ["no record of this exact message: none", [MAIL, false, false, true], null],
+    ["a statement with no name: line: none", [MAIL.replace("name: @sokha.keo\n", ""), true, false, true], null],
+    ["a name line written in the BODY is not the signer's name: none", [MAIL.replace("name: @sokha.keo\n", "").replace("Hello.", "name: @someone.else"), true, false, true], null],
+    ["not a B-Mail at all: none", ["hello\n\nname: @x\n", true, false, true], null],
+];
+for (const [why, args, want] of THANK) { const got = call(real, "thankFor", ...args), ok = got === want; console.log(`${ok ? "ok  " : "FAIL"} thank line: ${why}${ok ? "" : ` (got ${JSON.stringify(got)})`}`); if (!ok) code = 1; }
+// The link: exactly the ruled address, the @name in its path, ONE query key `thank=b-mail`, `#thank`, and never `from=b-mail`.
+const th = call(real, "thankHref", "@sokha.keo");
+let okThank = th === "https://333.eco/@sokha.keo?thank=b-mail#thank";
+try { const u = new URL(th); okThank &&= u.origin === "https://333.eco" && u.pathname === "/@sokha.keo" && u.hash === "#thank" && [...u.searchParams.keys()].join() === "thank" && u.searchParams.get("thank") === "b-mail" && !/from=/.test(th); } catch { okThank = false; }
+console.log(`${okThank ? "ok  " : "FAIL"} the thank link is https://333.eco/@x?thank=b-mail#thank, with no from=b-mail and nothing about the reader (got ${JSON.stringify(th)})`); if (!okThank) code = 1;
+// The words, in English and in our Khmer (the board's c_thank, copied byte for byte), each naming the @name; no words are filled in.
+const w = call(real, "thankWords", "@sokha.keo");
+const okWords = Array.isArray(w) && w[0] === "Thank @sokha.keo for this mail" && w[1] === "អរគុណ @sokha.keo សម្រាប់សំបុត្រនេះ";
+console.log(`${okWords ? "ok  " : "FAIL"} the line reads "Thank @x for this mail", and in Khmer "អរគុណ @x សម្រាប់សំបុត្រនេះ" (got ${JSON.stringify(w)})`); if (!okWords) code = 1;
+// CONTROL: a careless gate (any truthy signer result, withdrawal ignored) fails cases above, so they can fail.
+const sloppy = (text, found, withdrawn, signer) => (signer !== false ? real.invitationFor(text, found, false) : null);
+const loose = THANK.filter(([, args, want]) => sloppy(...args) !== want).length;
+console.log(`${loose >= 3 ? "ok  " : "FAIL"} control: a gate that takes "not failed" for passed and ignores withdrawal fails ${loose} of ${THANK.length} cases`); if (loose < 3) code = 1;
 process.exit(code);
