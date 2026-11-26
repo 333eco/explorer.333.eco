@@ -1,6 +1,8 @@
 // client/legal.ts (roadmap A709, 2026-11-25): when the Legal tab may tick a version. No network: the fixtures in legal-fixtures/ are public
 // files copied byte for byte (333eco/legal-versions on 2026-11-25: the earth.333.eco terms, their pending proof, the 2026-11-25 manifest
 // and its three tokens; thonly/publications: the-founder.md, its proof confirmed in block 967728, and that block's header from mempool.space).
+// ⭐ A709 M3/M4 (founder 2026-11-25: "do M3/M4"): index.json is the record's index as of c658dfa, with the four documents shared by every
+// service (host null, at <doc>/<id>.md); acceptable-use.md, its proof and the 2026-11-26 manifest with its three tokens are from that commit.
 // The control runs the same cases against a careless rule (a proof's block or a manifest line ticks, whatever text was served) and must
 // see it tick a changed text.
 //   node scripts/check-legal.mjs
@@ -109,6 +111,46 @@ t(sha(fx("terms.md")) === tv.sha256 && L.sound(terms, tv), "fixture: the earth.3
 {   // The review record (E10): shown only when the index has one; its date only from the record.
     t(L.reviewDate(tv) === null && tv.review === null, "today's versions have no review record (none exists on 2026-11-25), so the page shows nothing for it");
     t(L.reviewDate({ ...tv, review: { date: "2027-01-12" } }) === "2027-01-12" && L.reviewDate({ ...tv, review: { date: "soon" } }) === null, "a review record's date is read only when it is a date");
+}
+{   // ⭐ The documents shared by every service (A709 M3/M4): host null, path <doc>/<id>.md, served at legal.333.eco/<doc>/<id>/. Built from
+    // the raw index too, so a reader that drops them fails these lines rather than throwing.
+    const raw = JSON.parse(new TextDecoder().decode(fx("index.json"))).documents.filter((d) => d.host === null);
+    const shared = docs.filter((d) => d.host === null);
+    t(raw.length === 4 && shared.length === 4 && ["acceptable-use", "security", "operators", "trademarks"].every((x) => shared.some((d) => d.doc === x)), `the four documents for every service are read from the index (${shared.map((d) => d.doc).join(", ") || "none"})`);
+    const au = shared.find((d) => d.doc === "acceptable-use") ?? raw.find((d) => d.doc === "acceptable-use"), av = au.versions[0];
+    t(sha(fx("acceptable-use.md")) === av.sha256 && av.path === `acceptable-use/${av.id}.md` && L.sound(au, av), "fixture: acceptable use hashes to the index's fingerprint, and its address <doc>/<id>.md is accepted for a host-null entry");
+    t(L.servedAt(au, av) === `https://legal.333.eco/acceptable-use/${av.id}/`, `where it is served: ${L.servedAt(au, av)}`);
+    const sm = (day) => `${L.RAW}timestamps/manifests/${day}.sha256`;
+    const files = () => ({
+        [L.RAW + av.path]: fx("acceptable-use.md"), [`${L.RAW}${av.path}.ots`]: fx("acceptable-use.md.ots"), [sm("2026-11-26")]: fx("2026-11-26.sha256"),
+        ...Object.fromEntries(["aped-gr", "accv-es", "freetsa-de"].map((a) => [`${sm("2026-11-26")}.${a}.tsr`, fx(`2026-11-26.sha256.${a}.tsr`)])),
+    });
+    const seen = [];
+    let c = await run(au, av, files(), { seen, today: "2026-11-26" });
+    t(seen[0] === `${L.RAW}acceptable-use/${av.id}.md`, `its text is read from the record at <doc>/<id>.md (${seen[0] ?? "nothing read"})`);
+    t(c.sound && c.text.state === "match", "its text is ticked (hashed here to the index's fingerprint)");
+    t(c.tsa.state === "signed" && c.tsa.day === "2026-11-26" && c.tsa.names.length === 3, `the 2026-11-26 manifest lists it and its three tokens check (${c.tsa.names?.join(", ") ?? c.tsa.state})`);
+    t(c.bitcoin.state === "pending" && c.existedBy === c.tsa.first && !!c.existedBy, `its proof waits for a block, and "existed by" is the authorities' earliest time (${c.bitcoin.state}, ${c.existedBy})`);
+    const f2 = files(); f2[L.RAW + av.path] = flip(f2[L.RAW + av.path]);
+    c = await run(au, av, f2, { today: "2026-11-26" });
+    t(c.text.state === "differs" && ticks(c).length === 0 && c.existedBy === null, "⛔ its text with one byte changed: no tick, no date");
+    // ⛔ A shared path that escapes, or takes another shape, is refused before anything is fetched.
+    const escapes = [
+        ["../acceptable-use/" + av.id + ".md", "a path that climbs out (..)"],
+        ["../../thonly/notes/main/" + av.id + ".md", "a path into another repository"],
+        ["/acceptable-use/" + av.id + ".md", "an absolute path"],
+        ["acceptable-use/2026-11-09-000000.md", "a path naming another id"],
+        ["earth.333.eco/acceptable-use/" + av.id + ".md", "a host's path for a host-null entry"],
+        ["security/" + av.id + ".md", "another document's path"],
+    ];
+    for (const [path, what] of escapes) { const s2 = []; const r = await run(au, { ...av, path }, files(), { seen: s2 }); t(!r.sound && !ticks(r).length && s2.length === 0, `a shared entry with ${what}: refused, nothing fetched`); }
+    { const s2 = []; const r = await run({ ...au, doc: ".." }, { ...av, path: `../${av.id}.md` }, files(), { seen: s2 }); t(!r.sound && s2.length === 0, "a shared document named \"..\": refused, nothing fetched"); }
+    t(!L.sound(terms, { ...tv, path: `terms/${tv.id}.md` }), "a host's entry with a shared path (<doc>/<id>.md): refused");
+    t(!L.readIndex({ documents: [{ doc: "x", title: "X", versions: [] }, { host: 0, doc: "y", title: "Y", versions: [] }] }).length && L.readIndex({ documents: [{ host: null, doc: "z", title: "Z", versions: [] }] }).length === 1, "a missing host or one that isn't a name is not a document; only exactly null is shared");
+    t(!L.sound({ ...au, host: "" }, av) && !L.sound({ ...au, host: undefined }, av), "an empty or missing host is never read as shared");
+    // CONTROL: a careless rule for shared paths (any path ending in its own <id>.md) would fetch the climbing path; the real rule above didn't.
+    const carelessShared = (v) => v.path.endsWith(`/${v.id}.md`);
+    t(carelessShared({ ...av, path: escapes[0][0] }) && carelessShared({ ...av, path: escapes[1][0] }), "CONTROL: the careless rule accepts the paths that climb out");
 }
 t(L.currentOf({ versions: [{ id: "2026-11-09-ab4e2e" }, { id: "2027-01-12-7c19d0" }, { id: "2026-12-01-111111" }] }).id === "2027-01-12-7c19d0", "the current version is the newest by its id, whatever the index's order");
 

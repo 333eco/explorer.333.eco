@@ -6,10 +6,13 @@
    ⭐ 2026-11-25 (founder: fix the "known, not urgent" list; the first load stood at 70.8 KB gzip against its 71.1 KB budget): this file
    and ./legal are their own chunk, legal-tab.js, which app.js imports only when /legal opens (scripts/build.mjs). Moved here unchanged
    from app.ts. ⛔ Never import app.ts here: the page's helpers are handed in, and ./proofs is the page's own copy, bound below (the
-   build maps this chunk's "./proofs" to ./proofs-bound, so the verifier isn't downloaded twice). */
+   build maps this chunk's "./proofs" to ./proofs-bound, so the verifier isn't downloaded twice).
+   ⭐ 2026-11-25 (A709 M3/M4; founder: "do M3/M4"): the documents shared by every service (host null in the index) are listed after the
+   services under legal.333.eco's own heading, "For every service", and each version is checked as a service's is. Like legal.333.eco,
+   a shared document names no operator: every service's operator stands behind it for its own service. */
 import { h, leg, say, type Kid } from "./ui";
 import { bindProofs, headerOf } from "./proofs-bound";
-import { BLOB as LEGAL_BLOB, INDEX as LEGAL_INDEX, MANIFESTS as LEGAL_MANIFESTS, REPO as LEGAL_REPO, checkVersion, currentOf, readIndex as readLegalIndex, reviewDate, servedAt, type Checked, type Get as LegalGet, type LegalDoc, type LegalVersion } from "./legal";
+import { BLOB as LEGAL_BLOB, INDEX as LEGAL_INDEX, MANIFESTS as LEGAL_MANIFESTS, REPO as LEGAL_REPO, checkVersion, currentOf, placeOf, readIndex as readLegalIndex, reviewDate, servedAt, type Checked, type Get as LegalGet, type LegalDoc, type LegalVersion } from "./legal";
 
 /** What app.ts hands the Legal pages: its own helpers, so they draw exactly as the rest of the page does. */
 export interface LegalDeps {
@@ -43,7 +46,9 @@ const legalCheck = (d: LegalDoc, v: LegalVersion) => { let p = legalChecks.get(v
 export function legalPages({ view, route, link, head, card, tickNote, blockLink, full, date, when, n, title: LEGAL_TITLE, proofs }: LegalDeps) {
     bindProofs(proofs);
     const TSA = () => say("Timestamp authorities", "អាជ្ញាធរបោះត្រាពេលវេលា");
-    const legalHref = (d: LegalDoc, v: LegalVersion) => `/legal/${d.host}/${d.doc}/${v.id}`;
+    /** legal.333.eco's heading for the documents shared by every service (its services.json `shared.heading`), its Khmer word for word: our draft, like the rest of this site's. */
+    const SHARED = () => say("For every service", "សម្រាប់គ្រប់សេវា");
+    const legalHref = (d: LegalDoc, v: LegalVersion) => `/legal/${placeOf(d)}/${v.id}`;
     const dateLine = (v: LegalVersion) => v.dateLine.replace(/\.$/, "");
     const legalBack = () => link("/legal", say("All legal documents", "ឯកសារច្បាប់ទាំងអស់"));
     const cantReadLegal = (title: Node) => view.replaceChildren(title, card(leg(false, say("The legal index can't be read right now", "មិនអាចអានសន្ទស្សន៍ឯកសារច្បាប់បានឥឡូវនេះទេ"), say("Try again in a little while.", "សូមសាកល្បងម្តងទៀតបន្តិចក្រោយ។"))));
@@ -71,16 +76,18 @@ export function legalPages({ view, route, link, head, card, tickNote, blockLink,
         let docs: LegalDoc[];
         try { docs = await readLegal(); } catch { return cantReadLegal(title); }
         if (route().name !== "legal") return;
-        const hosts = [...new Set(docs.map((d) => d.host))];
+        // Each service's documents under its host, then the ones shared by every service (host null), as legal.333.eco lists them.
+        const hosts = [...new Set(docs.map((d) => d.host))].filter((x): x is string => x !== null), shared = docs.filter((d) => d.host === null);
         const rows: { chips: HTMLElement; d: LegalDoc; v: LegalVersion }[] = [];
-        const cards = hosts.map((host) => card(h("h2", { class: "ex-mono" }, host), ...docs.filter((d) => d.host === host).flatMap((d) => d.versions.slice().sort((a, b) => b.id.localeCompare(a.id)).map((v) => {
+        const versionRows = (list: LegalDoc[]) => list.flatMap((d) => d.versions.slice().sort((a, b) => b.id.localeCompare(a.id)).map((v) => {
             const chips = h("span", { class: "ex-chips" }, ...legalChips(null)); rows.push({ chips, d, v });
             return h("a", { class: "ex-row", href: legalHref(d, v) }, h("b", {}, d.title), h("span", {}, `${dateLine(v)} · `, h("span", { class: "ex-mono" }, v.sha256.slice(0, 6))), chips);
-        }))));
+        }));
+        const cards = [...hosts.map((host) => card(h("h2", { class: "ex-mono" }, host), ...versionRows(docs.filter((d) => d.host === host)))), ...(shared.length ? [card(h("h2", {}, SHARED()), ...versionRows(shared))] : [])];
         view.replaceChildren(title, ...cards, tickNote());
         await Promise.all(rows.map(async ({ chips, d, v }) => { const c = await legalCheck(d, v); if (route().name === "legal" && chips.isConnected) chips.replaceChildren(...legalChips(c)); }));
     }
-    async function legalVersionPage(host: string, docName: string, id: string | null) {
+    async function legalVersionPage(host: string | null, docName: string, id: string | null) {
         const title = head(LEGAL_TITLE());
         view.replaceChildren(title, card(h("p", { role: "status" }, say("Reading the index…", "កំពុងអានសន្ទស្សន៍…"))));
         let docs: LegalDoc[];
@@ -88,14 +95,14 @@ export function legalPages({ view, route, link, head, card, tickNote, blockLink,
         if (route().name !== "legalVersion") return;
         const d = docs.find((x) => x.host === host && x.doc === docName), cur = d ? currentOf(d) : null, v = d ? (id ? d.versions.find((x) => x.id === id) : cur) : null;
         if (!d || !v) return view.replaceChildren(title, card(h("p", {}, say("The index has no document by that name.", "សន្ទស្សន៍មិនមានឯកសារដែលមានឈ្មោះនោះទេ។"))), legalBack());
-        document.title = `${d.title} · ${d.host} · B-Explorer`;
+        document.title = d.host === null ? `${d.title} · B-Explorer` : `${d.title} · ${d.host} · B-Explorer`;
         const proof = link(`${LEGAL_BLOB}${v.path}.ots`, say("The proof", "ភស្តុតាង")), manifests = () => link(LEGAL_MANIFESTS, say("The manifests", "បញ្ជី"));
         const source = () => link(LEGAL_BLOB + v.path, say("Source", "ប្រភព"));
         const fp = say("Its fingerprint", "ស្នាមម្រាមដៃរបស់វា");
         const legs = card(leg(null, fp, say("Checking…", "កំពុងពិនិត្យ…")), h("p", { class: "ex-mono" }, full(v.sha256)), leg(null, "Bitcoin", say("Checking…", "កំពុងពិនិត្យ…")), leg(null, TSA(), say("Checking…", "កំពុងពិនិត្យ…")));
         const limit = h("div", { class: "card ex-limit" }, h("p", {}, say("Checking…", "កំពុងពិនិត្យ…")));
         const older = v !== cur && cur ? card(h("p", {}, h("b", {}, say("This is an earlier version.", "នេះជាកំណែមុន។")), " ", link(legalHref(d, cur), say("The current version", "កំណែបច្ចុប្បន្ន")))) : null;
-        const served = card(h("h2", {}, say("Served from", "បង្ហាញពី")), h("p", {}, link(servedAt(d, v), `legal.333.eco/${d.host}/${d.doc}/${v.id}`)),
+        const served = card(h("h2", {}, say("Served from", "បង្ហាញពី")), h("p", {}, link(servedAt(d, v), `legal.333.eco/${placeOf(d)}/${v.id}`)),
             h("p", { class: "fine ex-gap" }, say("The public repository ", "ឃ្លាំងសាធារណៈ "), link(`https://github.com/${LEGAL_REPO}`, LEGAL_REPO), say(" keeps this text and its proof.", " រក្សាអត្ថបទនេះ និងភស្តុតាងរបស់វា។")));
         view.replaceChildren(docHeadLegal(d, v), older, legs, limit, served, tickNote(), h("a", { class: "btn ghost", href: servedAt(d, v), rel: "noopener" }, say("Open its page on legal.333.eco", "បើកទំព័ររបស់វានៅលើ legal.333.eco")), legalBack());
         const c = await legalCheck(d, v);
@@ -132,6 +139,9 @@ export function legalPages({ view, route, link, head, card, tickNote, blockLink,
             ? say(`What this shows: the text existed by ${date(c.existedBy)}. It does not show who published it, or that it was in force.`, `អ្វីដែលនេះបង្ហាញ៖ អត្ថបទមានរួចហើយនៅ ${date(c.existedBy)}។ វាមិនបង្ហាញថាអ្នកណាជាអ្នកផ្សព្វផ្សាយ ឬថាវាមានសុពលភាពនោះទេ។`)
             : say("What a timestamp shows: that a text existed by a date. It does not show who published it, or that it was in force. No check on this page dated this text just now.", "អ្វីដែលត្រាពេលវេលាបង្ហាញ៖ អត្ថបទមួយមានរួចហើយនៅកាលបរិច្ឆេទមួយ។ វាមិនបង្ហាញថាអ្នកណាជាអ្នកផ្សព្វផ្សាយ ឬថាវាមានសុពលភាពនោះទេ។ គ្មានការពិនិត្យណាមួយនៅលើទំព័រនេះបានកំណត់កាលបរិច្ឆេទអត្ថបទនេះមុននេះបន្តិចទេ។")));
     }
-    const docHeadLegal = (d: LegalDoc, v: LegalVersion) => h("div", {}, h("h1", {}, `${d.title} · ${d.host}`), h("p", { class: "lede" }, dateLine(v)));
+    // A shared document is headed as legal.333.eco heads it: its title alone, "For every service" above it.
+    const docHeadLegal = (d: LegalDoc, v: LegalVersion) => d.host === null
+        ? h("div", {}, h("p", { class: "fine" }, SHARED()), h("h1", {}, d.title), h("p", { class: "lede" }, dateLine(v)))
+        : h("div", {}, h("h1", {}, `${d.title} · ${d.host}`), h("p", { class: "lede" }, dateLine(v)));
     return { legalPage, legalVersionPage };
 }

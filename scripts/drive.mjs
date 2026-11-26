@@ -410,15 +410,23 @@ try {
         const BARRED = /\bverif(?:y|ied|ies)\b|\bcertif(?:y|ied)\b|notar|\bthe estate\b|\bsign[\s-]?in\b|គ្រប់ស្ថាប័ន/i;
         const apart = `![...document.querySelectorAll('main .card, main .ex-leg, main p')].some(e=>/existed by|មានរួចហើយនៅ/i.test(e.innerText)&&/Served from|បង្ហាញពី/.test(e.innerText))`;
         const index = await (await fetch("https://raw.githubusercontent.com/333eco/legal-versions/main/index.json")).json(), all = index.documents.flatMap((d) => d.versions.map((v) => ({ d, v })));
+        // A709 M3/M4 (founder 2026-11-25: "do M3/M4"): a document shared by every service has host null and lives at <doc>/<id>.
+        const place = (d) => (d.host === null ? d.doc : `${d.host}/${d.doc}`), SHARED = "For every service";
         await size(390, 844, true); await go("/legal"); await until(`document.querySelector('main .ex-row') && ${settled}`, "the Legal tab");
         must(await ev(`document.querySelector('[data-nav=legal]').getAttribute('aria-current')==='page' && document.title==='Legal documents · B-Explorer'`), "the Legal tab is the current one, and the page is named");
         const hosts = await ev(`[...document.querySelectorAll('main .card h2')].map(x=>x.textContent)`);
-        must(JSON.stringify(hosts) === JSON.stringify([...new Set(index.documents.map((d) => d.host))]), `every document is grouped under its host (${hosts.join(", ")})`);
+        const wantHeads = [...new Set(index.documents.map((d) => d.host).filter((x) => x !== null)), ...(index.documents.some((d) => d.host === null) ? [SHARED] : [])];
+        must(JSON.stringify(hosts) === JSON.stringify(wantHeads), `every document is grouped under its host, and the ones for every service last under "${SHARED}" (${hosts.join(", ")})`);
         const rows = await ev(`[...document.querySelectorAll('main a.ex-row')].map(a=>({href:a.getAttribute('href'),text:a.innerText,ok:[...a.querySelectorAll('.ex-ok')].map(p=>p.textContent),bad:a.querySelectorAll('.ex-bad').length,pills:[...a.querySelectorAll('.pill')].map(p=>p.textContent)}))`);
-        must(rows.length === all.length && all.every(({ d, v }) => rows.some((r) => r.href === `/legal/${d.host}/${d.doc}/${v.id}` && r.text.includes(v.sha256.slice(0, 6)) && r.text.includes(v.dateLine.replace(/\.$/, "")))), `every version is listed with its date line and the first 6 hex of its fingerprint (${rows.length})`);
+        must(rows.length === all.length && all.every(({ d, v }) => rows.some((r) => r.href === `/legal/${place(d)}/${v.id}` && r.text.includes(v.sha256.slice(0, 6)) && r.text.includes(v.dateLine.replace(/\.$/, "")))), `every version is listed with its date line and the first 6 hex of its fingerprint (${rows.length})`);
         must(rows.every((r) => r.bad === 0 && r.ok.includes("3 timestamp authorities")), `each version's manifest and its three authorities' tokens were checked here (${rows.map((r) => r.ok.join("+")).join(" | ")})`);
         must(rows.every((r) => r.ok.includes("Bitcoin") || r.pills.includes("Waiting for a block. This takes a few hours.")), "each version's Bitcoin chip is a checked block or the live wording for a pending proof");
         const words = await body(); must(!BARRED.test(words) && !/\b\d+ (?:views|visits|checks)\b|\brank/i.test(words), "no barred word, no counter or rank on the list");
+        const NULLISH = `/\\bnull\\b|\\bundefined\\b/.test(document.querySelector('main').innerText) || !!document.querySelector('main a[href*="/null/"], main a[href*="/undefined/"]')`;
+        must(!(await ev(NULLISH)), "no host reads \"null\" on the list, in its words or its links");
+        {   const shared = all.filter(({ d }) => d.host === null), card = `[...document.querySelectorAll('main .card')].find(c=>c.querySelector('h2')?.textContent===${JSON.stringify(SHARED)})`;
+            must(shared.length > 0 && (await ev(`(()=>{const c=${card};return !!c && c===[...document.querySelectorAll('main .card')].filter(x=>x.querySelector('h2')).pop() && c.querySelectorAll('a.ex-row').length===${shared.length}})()`)), `the versions for every service (${shared.length}) are their own card, after the services`);
+        }
         await shot("22-legal-390"); await noSideways("the Legal tab");
         const { d, v } = all.find((x) => x.d.host === "earth.333.eco" && x.d.doc === "terms"), at = `/legal/${d.host}/${d.doc}/${v.id}`;
         await ev(`document.querySelector('a.ex-row[href="${at}"]').click()`); await until(`location.pathname==='${at}' && ${settled}`, "one version");
@@ -477,6 +485,32 @@ try {
         await ev(`document.querySelector('button[data-lang=en]').click()`);
         await go(`/legal/${d.host}/${d.doc}/2026-01-01-000000`); await until(`/no document by that name/.test(${legalMain})`, "a version that doesn't exist"); must(true, "a version that doesn't exist says so");
         await go(`/legal/${d.host}/${d.doc}`); await until(`/^\\/legal\\/earth\\.333\\.eco\\/terms$/.test(location.pathname) && ${settled}`, "the current version"); must(await ev(`document.querySelector('main .ex-limit') && document.querySelector('h1').textContent==='${d.title} · ${d.host}'`), "a document's address without a version opens its current version");
+        {   // A709 M3/M4: a document shared by every service, checked exactly as a service's is; its address has no host, and it names no operator.
+            const { d: sd, v: sv } = all.find((x) => x.d.host === null && x.d.doc === "acceptable-use"), sat = `/legal/${sd.doc}/${sv.id}`;
+            await size(390, 844, true); await go("/legal"); await until(`document.querySelector('main .ex-row') && ${settled}`, "the Legal tab (shared)");
+            await ev(`document.querySelector('a.ex-row[href="${sat}"]').click()`); await until(`location.pathname==='${sat}' && ${settled}`, "a document for every service");
+            L = await legs();
+            must(of("Its fingerprint")?.ok === "ex-ok" && /hashed here just now/.test(of("Its fingerprint").p) && (await body()).includes(sv.sha256.replace(/(.{4})/g, "$1 ").trim()), "a shared document's fingerprint is hashed here and matches the index, shown in full");
+            must(of("Timestamp authorities")?.ok === "ex-ok" && /In the \d{4}-\d{2}-\d{2} manifest, which .+ signed no later than/.test(of("Timestamp authorities").p), `its manifest and the authorities' tokens, checked here (${of("Timestamp authorities")?.p.slice(0, 90)})`);
+            must(of("Bitcoin")?.ok === "ex-ok" ? /The proof leads from this text to this block/.test(of("Bitcoin").p) : /^Waiting for a block\. This takes a few hours\./.test(of("Bitcoin")?.p ?? ""), `its Bitcoin leg, in the papers' live words (${of("Bitcoin")?.p.slice(0, 60)})`);
+            must(/^What this shows: the text existed by [A-Z][a-z]{2} \d{1,2}, \d{4}\./.test((await ev(`document.querySelector('main .ex-limit').innerText`)).trim()), "its limit, in its own card, with the date a check passed");
+            must(await ev(`[...document.querySelectorAll('main .card')].some(c=>c.querySelector('h2')?.textContent==='Served from' && c.querySelector('a').href==='https://legal.333.eco/${sd.doc}/${sv.id}/' && c.querySelector('a').textContent==='legal.333.eco/${sd.doc}/${sv.id}') && document.querySelector('a.btn[href="https://legal.333.eco/${sd.doc}/${sv.id}/"]')`), `"Served from" links https://legal.333.eco/${sd.doc}/${sv.id}/`);
+            must(await ev(`document.querySelector('h1').textContent===${JSON.stringify(sd.title)} && document.querySelector('main p.fine')?.textContent===${JSON.stringify(SHARED)} && document.title===${JSON.stringify(`${sd.title} · B-Explorer`)}`), `headed as legal.333.eco heads it: "${SHARED}", then its title alone`);
+            must(!/operat/i.test(await body()) && !(await ev(NULLISH)) && (await ev(apart)) && !BARRED.test(await body()), "no operator named, no \"null\", the two facts apart, no barred word");
+            await ev(`document.querySelector('main').insertAdjacentHTML('beforeend','<a href="/legal/null/x/y">null</a>')`); must(await ev(NULLISH), "CONTROL: the same probe sees \"null\" when it is there");
+            await go(sat); await until(settled, "the shared document again"); await shot("27a-legal-shared-390"); await noSideways("a shared document");
+            await cdp("Network.setCacheDisabled", { cacheDisabled: true });
+            await cdp("Fetch.enable", { patterns: [{ urlPattern: `*raw.githubusercontent.com/333eco/legal-versions/main/${sd.doc}/${sv.id}.md` }] }); tamperDoc = true;
+            await go(sat); await until(settled, "the shared document, with one byte changed in its text"); L = await legs();
+            must(!(await ev(`!!document.querySelector('main .ex-ok')`)) && of("Its fingerprint")?.ok === "ex-bad" && /No check on this page dated this text just now/.test(await ev(`document.querySelector('main .ex-limit').innerText`)), `CONTROL: one byte changed in a shared document's text and nothing is ticked, no date (${L.map((x) => `${x.t}:${x.ok || "-"}`).join(", ")})`);
+            tamperDoc = false; await cdp("Fetch.disable"); await cdp("Network.setCacheDisabled", { cacheDisabled: false });
+            await go(`/legal/${sd.doc}`); await until(`location.pathname==='/legal/${sd.doc}' && ${settled}`, "a shared document's current version"); must(await ev(`document.querySelector('main .ex-limit') && document.querySelector('h1').textContent===${JSON.stringify(sd.title)}`), "a shared document's address without a version opens its current version");
+            await go(`/legal/${sd.doc}/2026-01-01-000000`); await until(`/no document by that name/.test(${legalMain})`, "a shared version that doesn't exist"); must(true, "a shared version that doesn't exist says so");
+            await go("/legal"); await until(`document.querySelector('main .ex-row') && ${settled}`, "the list again");
+            await ev(`document.querySelector('button[data-lang=km]').click()`); await until(`document.documentElement.lang==='km' && /សម្រាប់គ្រប់សេវា/.test(${legalMain})`, "the list in Khmer");
+            must(await ev(`[...document.querySelectorAll('main .card h2')].pop().textContent==='សម្រាប់គ្រប់សេវា'`), "in Khmer, the last heading reads សម្រាប់គ្រប់សេវា"); await shot("27b-legal-km");
+            await ev(`document.querySelector('button[data-lang=en]').click()`);
+        }
         await size(1280, 800, false); await go("/legal"); await until(`document.querySelector('main .ex-row') && ${settled}`, "the Legal tab, desktop"); await shot("27-legal-desktop");
         await go(at); await until(settled, "a version, desktop"); await shot("28-legal-version-desktop");
     }

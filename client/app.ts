@@ -965,7 +965,7 @@ async function legalRoute(at: string, open: (p: LegalPages) => Promise<void>) {
 }
 
 /* ─────────────── Pages ─────────────── */
-function route(): { name: "origin" } | { name: "bmail" } | { name: "ledger" } | { name: "legal" } | { name: "legalVersion"; host: string; doc: string; id: string | null } | { name: "record"; index: number } | { name: "proof"; index: number } | { name: "view"; src: string; entry: number | null } | { name: "corpus" } | { name: "doc"; slug: string } | { name: "unknown" } {
+function route(): { name: "origin" } | { name: "bmail" } | { name: "ledger" } | { name: "legal" } | { name: "legalVersion"; host: string | null; doc: string; id: string | null } | { name: "record"; index: number } | { name: "proof"; index: number } | { name: "view"; src: string; entry: number | null } | { name: "corpus" } | { name: "doc"; slug: string } | { name: "unknown" } {
     const p = location.pathname.replace(/\/+$/, "");
     if (p === "/b-mail") return { name: "bmail" };
     const rec = /^\/origin\/(\d{1,12})$/.exec(p), doc = /^\/corpus\/([a-z0-9-]+)$/.exec(p);
@@ -976,8 +976,9 @@ function route(): { name: "origin" } | { name: "bmail" } | { name: "ledger" } | 
     if (doc) return { name: "doc", slug: doc[1] };
     if (p === "/ledger") return { name: "ledger" };
     if (p === "/legal") return { name: "legal" };
-    const lv = /^\/legal\/([a-z0-9][a-z0-9.-]*\.[a-z]+)\/([a-z0-9-]+)(?:\/(\d{4}-\d{2}-\d{2}-[0-9a-f]{6,8}))?$/.exec(p);
-    if (lv) return { name: "legalVersion", host: lv[1], doc: lv[2], id: lv[3] ?? null };
+    // A host has a dot and a document's name never does, so /legal/<doc>/<id> (shared by every service, A709 M3/M4) can't be read as a host's.
+    const lv = /^\/legal\/(?:([a-z0-9][a-z0-9.-]*\.[a-z]+)\/)?([a-z0-9-]+)(?:\/(\d{4}-\d{2}-\d{2}-[0-9a-f]{6,8}))?$/.exec(p);
+    if (lv) return { name: "legalVersion", host: lv[1] ?? null, doc: lv[2], id: lv[3] ?? null };
     if (p === "/corpus") return { name: "corpus" };
     // 2026-11-20: only "/" and "/origin" are the records. Any other address used to paint the records too, so a mistyped link looked like
     // a page and the Safari floor run could not tell /origin from an unknown address. It now says it cannot open that address.

@@ -3,6 +3,8 @@
  * papers, and add a new "Legal" tab page to B-Explorer?", then "yes then go"). Each version of each service's legal documents lives in the
  * PUBLIC repository 333eco/legal-versions: its exact bytes at `<host>/<doc>/<id>.md`, its OpenTimestamps proof beside it, and the dated
  * manifests of every tracked file with three authorities' RFC 3161 tokens. This file decides what may be ticked; app.ts only draws it.
+ * ⭐ 2026-11-25 (A709 M3/M4; founder: "do M3/M4"): the documents shared by every service have `host: null` in the index and live at
+ *   `<doc>/<id>.md`, served at legal.333.eco/<doc>/<id>/. They are checked exactly as a service's are; only their address has no host.
  *
  * ⛔ A tick means it was checked here just now, and EVERY tick on a version needs its text hashed here to the index's fingerprint first:
  *   a proof or a manifest line speaks of a fingerprint, so it says nothing about a text that doesn't have it (the papers' rule of
@@ -19,25 +21,28 @@ export const RAW = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/`;
 export const INDEX = `${RAW}index.json`;
 export const BLOB = `https://github.com/${REPO}/blob/${BRANCH}/`;
 export const MANIFESTS = `https://github.com/${REPO}/tree/${BRANCH}/timestamps/manifests`;
+/** A document's place in every address: `<host>/<doc>`, or `<doc>` alone for one shared by every service (host null). */
+export const placeOf = (d: LegalDoc) => (d.host === null ? d.doc : `${d.host}/${d.doc}`);
 /** Where legal.333.eco serves a version (spec §3: a version's address is permanent). */
-export const servedAt = (d: LegalDoc, v: LegalVersion) => `https://legal.333.eco/${d.host}/${d.doc}/${v.id}/`;
+export const servedAt = (d: LegalDoc, v: LegalVersion) => `https://legal.333.eco/${placeOf(d)}/${v.id}/`;
 
 export interface LegalVersion { id: string; dateLine: string; date: string; sha256: string; path: string; operator: string | null; firstServed: string | null; review: unknown }
-export interface LegalDoc { host: string; body: string; doc: string; title: string; versions: LegalVersion[] }
+export interface LegalDoc { host: string | null; body: string; doc: string; title: string; versions: LegalVersion[] }
 
 /** A version whose address doesn't follow from its own fingerprint is never checked: its id is `<date>-<first 6 (to 8) hex>`, its path
- *  `<host>/<doc>/<id>.md` (legal.333.eco SPEC §3, §4). */
+ *  `<host>/<doc>/<id>.md`, or `<doc>/<id>.md` only when the host is null (legal.333.eco SPEC §3, §4). */
 export function sound(d: LegalDoc, v: LegalVersion) {
-    if (!/^[a-z0-9][a-z0-9.-]*\.[a-z]+$/.test(d.host) || !/^[a-z0-9-]+$/.test(d.doc) || !/^[0-9a-f]{64}$/.test(v.sha256)) return false;
+    if (!(d.host === null || (typeof d.host === "string" && /^[a-z0-9][a-z0-9.-]*\.[a-z]+$/.test(d.host))) || !/^[a-z0-9-]+$/.test(d.doc) || !/^[0-9a-f]{64}$/.test(v.sha256)) return false;
     const m = /^(\d{4}-\d{2}-\d{2})-([0-9a-f]{6,8})$/.exec(v.id);
-    return !!m && m[1] === v.date && v.sha256.startsWith(m[2]) && v.path === `${d.host}/${d.doc}/${v.id}.md`;
+    return !!m && m[1] === v.date && v.sha256.startsWith(m[2]) && v.path === `${placeOf(d)}/${v.id}.md`;
 }
 
-/** The index as served, read as documents; anything not shaped like one is left out. */
+/** The index as served, read as documents; anything not shaped like one is left out. A host is a name or exactly null (shared by every
+ *  service); a missing host or any other value is not a document. */
 export function readIndex(json: unknown): LegalDoc[] {
     const docs = (json as { documents?: unknown })?.documents;
     if (!Array.isArray(docs)) throw new Error("not an index");
-    return docs.filter((d) => d && typeof d.host === "string" && typeof d.doc === "string" && typeof d.title === "string" && Array.isArray(d.versions))
+    return docs.filter((d) => d && (typeof d.host === "string" || d.host === null) && typeof d.doc === "string" && typeof d.title === "string" && Array.isArray(d.versions))
         .map((d) => ({ host: d.host, body: typeof d.body === "string" ? d.body : "", doc: d.doc, title: d.title, versions: (d.versions as LegalVersion[]).filter((v) => v && typeof v.id === "string" && typeof v.sha256 === "string" && typeof v.path === "string") }));
 }
 /** The current version is the newest by its id (date first, then fingerprint), whatever order the index lists them in. */
