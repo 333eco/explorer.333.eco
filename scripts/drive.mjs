@@ -388,10 +388,11 @@ try {
     {   // The Legal tab's code and words are their own chunk, fetched only when /legal opens (founder 2026-11-25: the first load stood at
         // 70.8 KB gzip against its 71.1 KB budget). app.js names the chunk by the hash of the file served (the zone's 4-hour cache), and
         // the other pages never fetch it.
-        const app = readFileSync(join(root, "app.js"), "utf8"), named = /"(\/legal-tab\.js\?v=([0-9a-f]{10}))"/.exec(app), chunk = join(root, "legal-tab.js");
+        const words = (f) => readFileSync(f, "utf8").replace(/\\u([0-9a-f]{4})/gi, (_, x) => String.fromCharCode(parseInt(x, 16))); // esbuild writes Khmer as \u escapes
+        const app = words(join(root, "app.js")), named = /"(\/legal-tab\.js\?v=([0-9a-f]{10}))"/.exec(app), chunk = join(root, "legal-tab.js");
         must(!!named && existsSync(chunk) && createHash("sha256").update(readFileSync(chunk)).digest("hex").startsWith(named[2]), `app.js names the Legal tab's chunk by the hash of the file served (${named?.[1] ?? "none named"})`);
         const LEGAL_ONLY = /333eco\/legal-versions|អ្វីដែលនេះបង្ហាញ/;
-        must(!LEGAL_ONLY.test(app) && existsSync(chunk) && LEGAL_ONLY.test(readFileSync(chunk, "utf8")), "the Legal tab's words are in its chunk, not in the first load");
+        must(!LEGAL_ONLY.test(app) && existsSync(chunk) && LEGAL_ONLY.test(words(chunk)), "the Legal tab's words are in its chunk, not in the first load");
         await cdp("Network.enable"); sent.length = 0;
         await size(390, 844, true); await go("/origin"); await until(`document.querySelector('table')`, "the records");
         await go("/corpus"); await until(`document.querySelector('.ex-doc')`, "the corpus");
