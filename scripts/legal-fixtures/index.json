@@ -72,6 +72,232 @@
           "operator": "Lucky Fate LLC",
           "firstServed": "2026-11-25",
           "review": null
+        },
+        {
+          "id": "2026-11-25-740d97",
+          "dateLine": "Draft of 25 November 2026.",
+          "date": "2026-11-25",
+          "sha256": "740d9787a30c0d4d4941452a7dfd1a50d6860723c830349ad6682b0670b3cae9",
+          "path": "developers.333.eco/privacy/2026-11-25-740d97.md",
+          "operator": "Lucky Fate LLC",
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": "legal.333.eco",
+      "body": "333.eco · shared services",
+      "doc": "privacy",
+      "title": "Privacy policy",
+      "versions": [
+        {
+          "id": "2026-11-25-e9fa93",
+          "dateLine": "Draft of 25 November 2026.",
+          "date": "2026-11-25",
+          "sha256": "e9fa93a14e508ad5331e722649c3a93f544cdc9b3e96f44a662a3dee134f7891",
+          "path": "legal.333.eco/privacy/2026-11-25-e9fa93.md",
+          "operator": null,
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": "storage.333.eco",
+      "body": "333.eco · shared services",
+      "doc": "terms",
+      "title": "Terms of use",
+      "versions": [
+        {
+          "id": "2026-11-23-959092",
+          "dateLine": "Draft of 23 November 2026.",
+          "date": "2026-11-23",
+          "sha256": "9590929d1bc6072f056810a7ac23ef0d30294fef7093443476f3488f35898977",
+          "path": "storage.333.eco/terms/2026-11-23-959092.md",
+          "operator": null,
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": "storage.333.eco",
+      "body": "333.eco · shared services",
+      "doc": "privacy",
+      "title": "Privacy policy",
+      "versions": [
+        {
+          "id": "2026-11-23-ee6581",
+          "dateLine": "Draft of 23 November 2026.",
+          "date": "2026-11-23",
+          "sha256": "ee6581ddbe115ccebeee89c4fcd4bcce2e5c6d945f6f14af64adc7726d0a92a4",
+          "path": "storage.333.eco/privacy/2026-11-23-ee6581.md",
+          "operator": null,
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": "ocr.siliconwat.dev",
+      "body": "Silicon Wat℠",
+      "doc": "terms",
+      "title": "Privacy and terms",
+      "versions": [
+        {
+          "id": "2026-11-20-eb1e11",
+          "dateLine": "Draft of 20 November 2026.",
+          "date": "2026-11-20",
+          "sha256": "eb1e119d137e5a35aab1487706564fe52ec69ebb98ebfe51b2fdc65880f024b3",
+          "path": "ocr.siliconwat.dev/terms/2026-11-20-eb1e11.md",
+          "operator": "Thon Ly",
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": "storage.333.eco",
+      "body": "333.eco · shared services",
+      "doc": "copyright",
+      "title": "Copyright and takedown",
+      "versions": [
+        {
+          "id": "2026-11-25-d84afd",
+          "dateLine": "Draft of 25 November 2026.",
+          "date": "2026-11-25",
+          "sha256": "d84afdbbb976b320c6be6f102babbfe7072933f02768522267956758c99a8062",
+          "path": "storage.333.eco/copyright/2026-11-25-d84afd.md",
+          "operator": null,
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": "sayyourname.app",
+      "body": "Factory 333™",
+      "doc": "privacy",
+      "title": "Privacy policy",
+      "versions": [
+        {
+          "id": "2026-11-25-f2894c",
+          "dateLine": "Draft of 25 November 2026.",
+          "date": "2026-11-25",
+          "sha256": "f2894ca3eac636b670ecb39ab80ef4deb21153317117fde596940ec4047ae061",
+          "path": "sayyourname.app/privacy/2026-11-25-f2894c.md",
+          "operator": "Factory 333™",
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": "missaquarius.org",
+      "body": "Miss Aquarius℠",
+      "doc": "privacy",
+      "title": "Privacy policy",
+      "versions": [
+        {
+          "id": "2026-11-25-975fd5",
+          "dateLine": "Draft of 25 November 2026.",
+          "date": "2026-11-25",
+          "sha256": "975fd59589e89dd0edd6847129ea7ae4c9846738d53a69d313a4d0e0d1579c5d",
+          "path": "missaquarius.org/privacy/2026-11-25-975fd5.md",
+          "operator": null,
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": "missaquarius.com",
+      "body": "Miss Aquarius℠",
+      "doc": "privacy",
+      "title": "Privacy policy",
+      "versions": [
+        {
+          "id": "2026-11-25-213632",
+          "dateLine": "Draft of 25 November 2026.",
+          "date": "2026-11-25",
+          "sha256": "213632af0dae2daed36c5e6da4dc635cf1e764bc2e563bbe0c32725ea44ab813",
+          "path": "missaquarius.com/privacy/2026-11-25-213632.md",
+          "operator": null,
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": null,
+      "body": "For every service",
+      "doc": "acceptable-use",
+      "title": "Acceptable use",
+      "versions": [
+        {
+          "id": "2026-11-25-b9a7a6",
+          "dateLine": "Draft of 25 November 2026.",
+          "date": "2026-11-25",
+          "sha256": "b9a7a6c637235210b12de6b0b2ccbcda1ddd8e68f4cdc9b16a01835d933ec1a0",
+          "path": "acceptable-use/2026-11-25-b9a7a6.md",
+          "operator": null,
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": null,
+      "body": "For every service",
+      "doc": "security",
+      "title": "Security policy",
+      "versions": [
+        {
+          "id": "2026-11-25-d63806",
+          "dateLine": "Draft of 25 November 2026.",
+          "date": "2026-11-25",
+          "sha256": "d63806c5330d6a4b0b075d7f14e8d5fae3a615f9ac8ac21dced7a456a078eda6",
+          "path": "security/2026-11-25-d63806.md",
+          "operator": null,
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": null,
+      "body": "For every service",
+      "doc": "operators",
+      "title": "Operators",
+      "versions": [
+        {
+          "id": "2026-11-25-51dd66",
+          "dateLine": "Draft of 25 November 2026.",
+          "date": "2026-11-25",
+          "sha256": "51dd667d13ae35079ee42b47f4f020b9eeafd9daede0c6cd7ae48e402914a6c0",
+          "path": "operators/2026-11-25-51dd66.md",
+          "operator": null,
+          "firstServed": "2026-11-25",
+          "review": null
+        }
+      ]
+    },
+    {
+      "host": null,
+      "body": "For every service",
+      "doc": "trademarks",
+      "title": "Trademark guidelines",
+      "versions": [
+        {
+          "id": "2026-11-25-21291e",
+          "dateLine": "Draft of 25 November 2026.",
+          "date": "2026-11-25",
+          "sha256": "21291ef68c2d219008303a61f9e5abf2d4e631c5c59e260c0100faf4c3d69d43",
+          "path": "trademarks/2026-11-25-21291e.md",
+          "operator": null,
+          "firstServed": "2026-11-25",
+          "review": null
         }
       ]
     }
