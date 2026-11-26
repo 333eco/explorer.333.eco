@@ -66,6 +66,12 @@
     // so navigating to /about or /login changes the URL without a document load.
     // Fire page_view on first load AND on every route change, de-duped on path.
     var lastPath = null;
+    // Who visits whose page is never recorded: a person's address is logged as "/@", with no name.
+    // Copied from 333.eco's beacon (333.eco static/analytics.js, `masked`; founder 2026-11-08/09). Here it masks each link_click's
+    // href, so the B-Mail check page's thank link is recorded as https://333.eco/@?thank=b-mail#thank (scripts/check-analytics.mjs).
+    function masked(u) {
+        return String(u).replace(/\/@[^/?#]*/, "/@");
+    }
     function pageView() {
         if (location.pathname === lastPath) return;
         lastPath = location.pathname;
@@ -114,7 +120,7 @@
         if (!a && e.target.closest) a = e.target.closest("a[href]");
         if (!a) return;
         post("link_click", {
-            href: a.href,
+            href: masked(a.href),
             internal: String(a.host === location.host)
         });
     });

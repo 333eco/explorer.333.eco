@@ -472,6 +472,13 @@ try {
         must(!(await ev(invites)), "an unsigned B-Mail gets the failed check and no invitation"); must((await ev("location.hash")) === "", "the message left the address once read");
         await ev(`document.querySelector('main').insertAdjacentHTML('beforeend','<a href="https://333.eco/?from=b-mail">x</a>')`);
         must(await ev(invites), "CONTROL: the same probe sees an invitation when one is there");
+        // 2026-11-25 (B-Mail thanks phase 3 (a)): no thank line beside a failed check either, though the message names an @name.
+        await go("/origin"); await until(`/all checked/.test(document.querySelector('main').innerText)`, "the records between B-Mails");
+        await go(`/b-mail#m=${m}`); await until(`/No record of this exact message/.test(document.querySelector('main').innerText)`, "an unsigned B-Mail (the thank line)");
+        const thanks = `[...document.querySelectorAll('main a')].some(a=>/[?&]thank=b-mail/.test(a.href))`;
+        must(!(await ev(thanks)), "an unsigned B-Mail that names an @name gets no thank line");
+        await ev(`document.querySelector('main').insertAdjacentHTML('beforeend','<a href="https://333.eco/@sokha.keo?thank=b-mail#thank">x</a>')`);
+        must(await ev(thanks), "CONTROL: the same probe sees a thank line when one is there");
     }
     {   // 2026-11-25 (founder: "Attachments: agree"; spec §3.1, §9.2): a B-Mail's files are compared on this device. The vectors are the
         // mail skill's (bmail_canonical), each `want` an exact statement. None is in the log, so the live page must show NO file box
@@ -551,6 +558,21 @@ try {
             else {
                 must(/This exact message is record #/.test(page), "the real B-Mail is found in the log");
                 await until(`!/Checking this message/.test(document.querySelector('main').innerText) && document.querySelector('main .ex-files')`, "its file box");
+                // 2026-11-25 (B-Mail thanks phase 3 (a); board C1): its signer check passed here, so ONE line thanks that same @name. The
+                // name is read from the page's own row, never written in this repo.
+                const signer = /Signed with (@[A-Za-z0-9._-]+)'s passkey/.exec(await body())?.[1];
+                must(!!signer, `its signer check passed on this page (${signer ? "Signed with @…'s passkey" : "no such row"})`);
+                const thankLinks = `[...document.querySelectorAll('main a')].filter(a=>/[?&]thank=b-mail/.test(a.href)).map(a=>({href:a.getAttribute('href'),text:a.textContent}))`;
+                let tl = await ev(thankLinks);
+                must(tl.length === 1 && tl[0].href === `https://333.eco/${signer}?thank=b-mail#thank`, `one thank line, linking exactly https://333.eco/@x?thank=b-mail#thank (${JSON.stringify(tl.map((x) => x.href.replace(signer, "@x")))})`);
+                must(tl[0]?.text === `Thank ${signer} for this mail`, "it reads \"Thank @x for this mail\", to the name the signer row confirmed");
+                must(!/from=/.test(tl[0]?.href ?? "from=") && (await ev(`[...document.querySelectorAll('main a')].filter(a=>a.href.includes('from=b-mail')).map(a=>a.href).sort().join(' ')`)) === "https://333.eco/?from=b-mail https://sign.333.eco/b-mail?from=b-mail", "the thank link carries no from=b-mail, and the two invitations keep theirs, unchanged");
+                const order = `(()=>{const k=[...document.getElementById('view').children],at=(f)=>k.findIndex(f);return [at(e=>e.matches('p.fine')&&/A link copied into another mail/.test(e.textContent)),at(e=>!!e.querySelector('a[href*="thank=b-mail"]')),at(e=>!!e.querySelector('a[href="https://333.eco/?from=b-mail"]')),at(e=>!!e.querySelector('a[href*="sign.333.eco/b-mail"]'))]})()`;
+                const [iFine, iThank, iInvite, iSign] = await ev(order);
+                must(iFine >= 0 && iThank === iFine + 1 && iInvite === iThank + 1 && iSign === iInvite + 1, `placed as C1 draws it: after the two fine-print lines, before the two invitations (${[iFine, iThank, iInvite, iSign].join(" ")})`);
+                must(!(await ev(`!!document.querySelector('main textarea, main input:not([type=file])')`)), "no words are filled in, or asked for, on this page");
+                await shot("29-bmail-thank-en"); await noSideways("the thank line");
+                await dark(true); await sleep(200); await shot("30-bmail-thank-dark"); await dark(false);
                 must(await ev(`!!document.querySelector('main .ex-files')`), "beside the found record that lists a file, the file box shows");
                 const listedName = await ev(`document.querySelector('.ex-files .ex-leg b').textContent`), dir2 = join(out, "found"); mkdirSync(dir2, { recursive: true });
                 const real = readFileSync(listedFile), changed = Buffer.from(real); changed[changed.length - 1] ^= 1;
@@ -572,7 +594,33 @@ try {
                 await until(`document.documentElement.lang==='km' && /ឯកសារដែលបានចុះហត្ថលេខាជាមួយវា/.test(document.querySelector('main').innerText) && document.querySelectorAll('.ex-files .ex-leg').length>=3`, "the found B-Mail in Khmer");
                 const km = await ev(`[...document.querySelectorAll('.ex-files .ex-leg')].map(l=>({t:l.querySelector('b').textContent,c:l.querySelector('b').className,p:l.querySelector('p').textContent}))`);
                 must(km.find((x) => x.t === listedName)?.c === "ex-ok" && /នេះគឺជាឯកសារដែលបានចុះហត្ថលេខាជាមួយសារ/.test(km.find((x) => x.t === listedName).p) && km.filter((x) => /មិនត្រូវបានចុះហត្ថលេខាជាមួយសារទេ/.test(x.p)).length === 2, "in Khmer, after the page repaints, the same three files say the same");
-                await shot("21-bmail-found-files-km"); await ev(`document.querySelector('button[data-lang=en]').click()`);
+                await shot("21-bmail-found-files-km");
+                tl = await ev(thankLinks);
+                must(tl.length === 1 && tl[0].text === `អរគុណ ${signer} សម្រាប់សំបុត្រនេះ` && tl[0].href === `https://333.eco/${signer}?thank=b-mail#thank`, "in Khmer the thank line reads អរគុណ @x សម្រាប់សំបុត្រនេះ, to the same address");
+                await shot("31-bmail-thank-km"); await noSideways("the thank line in Khmer");
+                await ev(`document.querySelector('button[data-lang=en]').click()`);
+                // The same real mail where the signer is NOT confirmed: no thank line. Each opens a new document (the fragment is read once).
+                const frag = readFileSync(linkFile, "utf8").trim().split("#")[1], q = new URLSearchParams(frag);
+                const again = async (fragment, what, row, shows = false) => {
+                    await cdp("Page.navigate", { url: "about:blank" }); await sleep(300); await go(`/b-mail#${fragment}`);
+                    await until(`!/Checking this message/.test(document.querySelector('main').innerText) && /This exact message is record #/.test(document.querySelector('main').innerText) && document.querySelector('main a[href="https://333.eco/?from=b-mail"]')`, what);
+                    const txt = await body();
+                    if (shows) return must(row.test(txt) && (await ev(thankLinks)).length === 1, `${what}: the signer confirmed and the thank line there, so the probe above can see one`);
+                    must(row.test(txt) && !/Signed with @/.test(txt), `${what}: the page says so (${row.source})`);
+                    must((await ev(thankLinks)).length === 0, `${what}: no thank line, though the invitations show`);
+                };
+                const noProof = new URLSearchParams(q); noProof.delete("p");
+                await again(noProof.toString(), "no proof in the link (the name not confirmed)", /Not confirmed against @/);
+                const pj = JSON.parse(Buffer.from(q.get("p"), "base64url").toString()), sig = pj.opening.signature;
+                pj.opening.signature = sig.slice(0, 5) + (sig[5] === "A" ? "B" : "A") + sig.slice(6);
+                const bent = new URLSearchParams(q); bent.set("p", Buffer.from(JSON.stringify(pj)).toString("base64url"));
+                must(pj.opening.signature !== sig, "CONTROL: the bent proof differs from the real one in one character");
+                await again(bent.toString(), "a proof that doesn't fit the record (the comparison failed)", /Its proof doesn.t fit this record/);
+                await cdp("Fetch.enable", { patterns: [{ urlPattern: "*333.eco/api/v1/names/*" }] });
+                forge = (url) => (/^https:\/\/333\.eco\/api\/v1\/names\//.test(url) ? { body: JSON.stringify({ keys: [] }) } : undefined);
+                await again(frag, "the name's page showing no passkey (the name not confirmed)", /Not confirmed against @/);
+                forge = null; await cdp("Fetch.disable");
+                await again(frag, "CONTROL: the real link again, nothing forged", /Signed with @/, true);
             }
         }
     }
