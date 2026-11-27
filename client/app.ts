@@ -11,6 +11,7 @@ import { EMPTY, bundleEntries, decodeMemory, encodeMemory, extend, rootOf, type 
 import { heldStamp, type Held } from "./stamped";
 import { h, isKm, leg, say, short, type Kid } from "./ui";
 import { fileBox, mayShow, type Received } from "./attachments";
+import { BY_KIND, ENROLLED, LIST_NOTE, NOTHING_REMOVED, REPORTED_BY, WHO, backed, readRevoke } from "./revoke";
 import { anchorOf, headerOf, hex, manifestTokens, otsDigest, sha256, type Anchor } from "./proofs";
 import * as proofs from "./proofs";
 // @ts-expect-error the same
@@ -105,7 +106,7 @@ function bitcoinRow(out: { bitcoin: { height: number; time: string }[]; bitcoinU
 }
 interface Entry { t: string; index: number; witnessedAt?: string; target?: number; claim?: { sha256: string; source: string; rights?: string; tool: string; mime: string; declared: boolean } }
 interface Log { ok: boolean; why?: string; size: number; entries: Entry[]; stamps: { tsa?: number[]; ots?: number[] } }
-let logCache: Log | null = null, shown = PAGE, found: { how: string; index: number; distance?: number; waiting?: boolean; signer?: { ok: boolean | null; text: string; fine?: string } }[] | null = null, searchNote = "";
+let logCache: Log | null = null, shown = PAGE, shownRevokes = PAGE, found: { how: string; index: number; distance?: number; waiting?: boolean; signer?: { ok: boolean | null; text: string; fine?: string } }[] | null = null, searchNote = "";
 /**
  * A B-Mail chosen WITH its proof (A607 point 3): the proof names the passkey that signed; the signed text names the sender's @name;
  * their page at 333.eco lists the passkeys that sign as them. All three are checked here. ⛔ Never "verified": it says which
@@ -279,7 +280,7 @@ async function originPage() {
     const l = await readLog();
     if (route().name !== "origin") return;
     if (!l.ok) { view.replaceChildren(title, card(leg(false, say("This log didn't pass its check", "កំណត់ហេតុនេះមិនបានឆ្លងការពិនិត្យទេ"), say("Or it can't be read right now. So nothing from it is shown. ", "ឬមិនអាចអានបានឥឡូវនេះ។ ដូច្នេះគ្មានអ្វីពីវាត្រូវបានបង្ហាញទេ។ "), h("span", { class: "ex-mono" }, l.why ?? "")))); return; }
-    const withdrawn = withdrawnOf(l), recs = l.entries.filter((e) => e.t === "record").reverse(), page = recs.slice(0, shown);
+    const withdrawn = withdrawnOf(l), recs = l.entries.filter((e) => e.t === "record").reverse(), page = recs.slice(0, shown), revokes = l.entries.filter((e) => e.t === "revoke").reverse();
     const stamped = [...new Set([...(l.stamps.tsa ?? []), ...(l.stamps.ots ?? [])])].filter((s) => s > 0).sort((a, b) => b - a).slice(0, 12);
     view.replaceChildren(title, searchBox(l), results() ?? h("span", {}),
         card(leg(true, say(`${count(l.size, "entry", "entries")}, all checked`, `${n(l.size)} ធាតុ បានពិនិត្យទាំងអស់`), say("The log's signature, its tree, and each entry's signature were checked in your browser. ", "ហត្ថលេខារបស់កំណត់ហេតុ មែកធាងរបស់វា និងហត្ថលេខារបស់ធាតុនីមួយៗត្រូវបានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នក។ "), source(viewHref(`${LOG}checkpoint`)))),
@@ -287,6 +288,10 @@ async function originPage() {
             h("thead", {}, h("tr", {}, h("th", {}, "#"), h("th", {}, say("Signed (UTC)", "បានចុះហត្ថលេខា (UTC)")), h("th", {}, say("How it was made", "របៀបបង្កើត")), h("th", {}, say("File fingerprint", "ស្នាមម្រាមដៃឯកសារ")))),
             h("tbody", {}, ...page.map((e) => h("tr", {}, h("td", {}, link(`/origin/${e.index}`, n(e.index))), h("td", {}, date(e.witnessedAt ?? "")), h("td", {}, label(e.claim!.source), withdrawn.has(e.index) ? h("div", { class: "fine" }, say("Withdrawn by the signer", "អ្នកចុះហត្ថលេខាបានដកចេញ")) : null), h("td", { class: "ex-mono" }, short(e.claim!.sha256))))))),
             recs.length > shown ? h("button", { type: "button", class: "btn ghost ex-more ex-gap", onclick: () => { shown += PAGE; paint(); } }, say("Show more", "បង្ហាញបន្ថែម")) : null),
+        // 2026-11-26: a revoke entry is an entry, never a record: counted in the log's size above (as a withdrawal is), listed here on its own.
+        revokes.length ? card(h("h2", {}, say("Phone keys reported, newest first", "កូនសោទូរស័ព្ទដែលបានរាយការណ៍ ថ្មីបំផុតមុន")), h("p", { class: "fine" }, say(...LIST_NOTE)),
+            ...revokes.slice(0, shownRevokes).map((e) => { const r = readRevoke(e); return h("a", { class: "ex-row", href: `/origin/${e.index}` }, h("b", {}, `#${n(e.index)}`), h("span", {}, say(...BY_KIND[r.by]), h("span", { class: "fine" }, " · ", keyCount(r.keys.length), " · ", say(`known ${date(r.witnessedAt)}`, `បានដឹង ${date(r.witnessedAt)}`)))); }),
+            revokes.length > shownRevokes ? h("button", { type: "button", class: "btn ghost ex-more ex-gap", onclick: () => { shownRevokes += PAGE; paint(); } }, say("Show more", "បង្ហាញបន្ថែម")) : null) : null,
         stamped.length ? card(h("h2", {}, say("Sealed by outside clocks", "បានបិទត្រាដោយនាឡិកាខាងក្រៅ")), h("p", {}, say("At these sizes the log's state was also timestamped outside our control. Open a record to check its own.", "នៅទំហំទាំងនេះ ស្ថានភាពកំណត់ហេតុក៏ត្រូវបានបោះត្រាពេលវេលានៅក្រៅការគ្រប់គ្រងរបស់យើង។ បើកកំណត់ត្រាដើម្បីពិនិត្យរបស់វា។")),
             ...stamped.map((s) => h("p", { class: "fine" }, say(`${count(s, "entry", "entries")}: `, `${n(s)} ធាតុ៖ `), [(l.stamps.tsa ?? []).includes(s) ? say("timestamp authorities", "អាជ្ញាធរបោះត្រាពេលវេលា") : "", (l.stamps.ots ?? []).includes(s) ? "Bitcoin" : ""].filter(Boolean).join(" · ")))) : null,
         card(h("h2", {}, say("Check it yourself, without us", "ពិនិត្យដោយខ្លួនឯង ដោយមិនត្រូវការយើង")), h("p", {}, say("This page and the free verifier run the same code. Nothing about it needs this site.", "ទំព័រនេះ និងកម្មវិធីផ្ទៀងផ្ទាត់ឥតគិតថ្លៃដំណើរការកូដដូចគ្នា។ គ្មានអ្វីត្រូវការគេហទំព័រនេះទេ។")), code("npx @333eco/origin-verify record 0"), link("https://developers.333.eco/verify#reference", say("How checking works", "របៀបពិនិត្យ")), " · ", link("https://developers.333.eco/verify#tree", say("How the log holds together", "របៀបដែលកំណត់ហេតុរក្សាភាពជាប់គ្នា"))));
@@ -300,14 +305,20 @@ async function recordPage(index: number) {
         l = await readLog();
         if (!l.ok) return fail(say("The log didn't pass its check", "កំណត់ហេតុមិនបានឆ្លងការពិនិត្យទេ"), l.why ?? "");
         if (index >= l.size) {
-            const w = (await readWaiting(l.size)).find((e) => e.index === index && e.t === "record");
+            const w = (await readWaiting(l.size)).find((e) => e.index === index);
             if (route().name !== "record") return;
-            if (w) return view.replaceChildren(title, card(leg(null, say("Signed, waiting for the next checkpoint", "បានចុះហត្ថលេខា កំពុងរង់ចាំចំណុចត្រួតពិនិត្យបន្ទាប់"),
+            if (w?.t === "revoke") return revokeView(w, index, [leg(null, say("Signed, waiting for the next checkpoint", "បានចុះហត្ថលេខា កំពុងរង់ចាំចំណុចត្រួតពិនិត្យបន្ទាប់"), say("The log's own key signed this entry, checked in your browser just now. It joins the public log at its next checkpoint, within the hour; then this page checks it in full.", "កូនសោរបស់កំណត់ហេតុផ្ទាល់បានចុះហត្ថលេខាលើធាតុនេះ ដែលបានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នកមុននេះ។ វាចូលរួមក្នុងកំណត់ហេតុសាធារណៈនៅចំណុចត្រួតពិនិត្យបន្ទាប់ ក្នុងរយៈពេលមួយម៉ោង បន្ទាប់មកទំព័រនេះពិនិត្យវាពេញលេញ។"))]);
+            if (w?.t === "record") return view.replaceChildren(title, card(leg(null, say("Signed, waiting for the next checkpoint", "បានចុះហត្ថលេខា កំពុងរង់ចាំចំណុចត្រួតពិនិត្យបន្ទាប់"),
                     say("The log's own key signed this entry, checked in your browser just now. It joins the public log at its next checkpoint, within the hour; then this page checks it in full.", "កូនសោរបស់កំណត់ហេតុផ្ទាល់បានចុះហត្ថលេខាលើធាតុនេះ ដែលបានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នកមុននេះ។ វាចូលរួមក្នុងកំណត់ហេតុសាធារណៈនៅចំណុចត្រួតពិនិត្យបន្ទាប់ ក្នុងរយៈពេលមួយម៉ោង បន្ទាប់មកទំព័រនេះពិនិត្យវាពេញលេញ។")),
                     h("p", {}, say("Signed (UTC) ", "បានចុះហត្ថលេខា (UTC) "), date(w.witnessedAt ?? ""), " · ", label(w.claim.source), w.claim.rights ? ` · ${w.claim.rights}` : ""),
                     h("p", { class: "fine" }, say("File fingerprint ", "ស្នាមម្រាមដៃឯកសារ "), full(w.claim.sha256))), link("/origin", say("All records", "កំណត់ត្រាទាំងអស់")));
             return view.replaceChildren(title, card(h("p", {}, say("The log doesn't have this entry. A new record joins at its next checkpoint, within the hour.", "កំណត់ហេតុមិនមានធាតុនេះទេ។ កំណត់ត្រាថ្មីចូលរួមនៅចំណុចត្រួតពិនិត្យបន្ទាប់ ក្នុងរយៈពេលមួយម៉ោង។"))), link("/origin", say("All records", "កំណត់ត្រាទាំងអស់")));
         }
+        // ⭐ 2026-11-26: a record's pack refuses an entry that holds no record ("this entry is not a record"), which read as a failure of the
+        //   log. A revoke entry, a void and a kind this page doesn't know are shown here instead, from the log this page just audited.
+        const known = l.entries[index];
+        if (known && known.t !== "record" && known.t !== "withdraw") return known.t === "revoke" ? revokeView(known, index, await revokeLegs(known, l)) : view.replaceChildren(title,
+            card(h("p", {}, say("This entry holds no record.", "ធាតុនេះមិនមានកំណត់ត្រាទេ។")), h("p", { class: "fine" }, link(viewHref(entryTile(index, l.size), index), say("See it as it is stored", "មើលវាដូចដែលបានរក្សាទុក")))), link("/origin", say("All records", "កំណត់ត្រាទាំងអស់")));
         pack = await packRecord(logGet, index, trust);
         out = await verifyPack(pack, trust, { header: headerOf });
     } catch (e) { return fail(say("This record couldn't be checked", "មិនអាចពិនិត្យកំណត់ត្រានេះបានទេ"), (e as Error).message); }
@@ -327,6 +338,26 @@ async function recordPage(index: number) {
             ...out.timestampFailures.map((t: { authority: string; why: string }) => leg(false, say(`Timestamp: ${t.authority}`, `ត្រាពេលវេលា៖ ${t.authority}`), t.why))), tickNote(),
         card(h("h2", {}, say("What a record can't show", "អ្វីដែលកំណត់ត្រាមិនអាចបង្ហាញបាន")), h("p", {}, say("Who imagined the work. A record shows only who signed it, and when.", "អ្នកណាបានគិតស្នាដៃនេះ។ កំណត់ត្រាបង្ហាញតែអ្នកណាបានចុះហត្ថលេខា និងពេលណាប៉ុណ្ណោះ។"))),
         card(h("h2", {}, say("Check it yourself", "ពិនិត្យដោយខ្លួនឯង")), h("p", {}, say("A source shows the data a check used. To check it without trusting this page, run:", "ប្រភពបង្ហាញទិន្នន័យដែលការពិនិត្យបានប្រើ។ ដើម្បីពិនិត្យដោយមិនទុកចិត្តទំព័រនេះ សូមដំណើរការ៖")), code(`npx @333eco/origin-verify record ${index}`), h("a", { class: "btn ghost", href: `/origin/${index}/proof` }, say("See this record's proof", "មើលភស្តុតាងនៃកំណត់ត្រានេះ"))),
+        link("/origin", say("All records", "កំណត់ត្រាទាំងអស់")));
+}
+const keyCount = (k: number) => say(count(k, "key", "keys"), `${n(k)} កូនសោ`);
+/** A revoke entry in the log, checked here: its signature again, and its place in the tree the audit rebuilt from every entry. */
+async function revokeLegs(e: Entry, l: Log): Promise<Kid[]> {
+    const signed = await checkWitnessSignature(e, trust).catch(() => false);
+    return [leg(signed, say("The signature on this entry", "ហត្ថលេខាលើធាតុនេះ"), source(viewHref(entryTile(e.index, l.size), e.index))),
+        leg(true, say("It is in the log", "វានៅក្នុងកំណត់ហេតុ"), say("The log's root was rebuilt from every entry, this one included, and it matches the log's signed checkpoint. ", "ឫសរបស់កំណត់ហេតុត្រូវបានសាងសង់ឡើងវិញពីធាតុនីមួយៗ រួមទាំងធាតុនេះ ហើយវាត្រូវនឹង checkpoint ដែលបានចុះហត្ថលេខារបស់កំណត់ហេតុ។ "), source(viewHref(`${LOG}checkpoint`)))];
+}
+/** A revoke entry (./revoke): what was reported, from when, since when, and that it removed nothing. Never a failure of the log. */
+function revokeView(e: unknown, index: number, legs: Kid[]) {
+    const r = readRevoke(e), at = (s: string) => (s ? when(s) : "—"), row = (a: string, b: Kid, mono = false) => [h("dt", {}, a), h("dd", mono ? { class: "ex-mono" } : {}, b)];
+    document.title = `${say(`Entry #${index}`, `ធាតុ #${index}`)} · B-Explorer`;
+    view.replaceChildren(head(say(`Entry #${n(index)}`, `ធាតុ #${n(index)}`)),
+        card(h("h2", {}, say(...BY_KIND[r.by])), r.by === "other" ? null : h("p", {}, say(...WHO[r.by])), h("p", {}, say(...backed(at(r.compromised), at(r.witnessedAt)))), r.by === "operator" ? h("p", { class: "fine" }, say(...ENROLLED)) : null,
+            h("dl", { class: "ex-kv ex-gap" }, ...row(say("Reported by", "រាយការណ៍ដោយ"), say(...REPORTED_BY[r.by])), ...row(say("From", "ចាប់ពី"), at(r.compromised)), ...row(say("Known", "បានដឹង"), at(r.witnessedAt)),
+                ...row(say("Keys", "កូនសោ"), h("div", {}, keyCount(r.keys.length), ...r.keys.map((k) => h("div", { class: "ex-mono" }, short(k))))))),
+        card(h("p", {}, say(...NOTHING_REMOVED))),
+        card(h("h2", {}, say("Checked in your browser", "បានពិនិត្យក្នុងកម្មវិធីរុករករបស់អ្នក")), ...legs), tickNote(),
+        card(h("h2", {}, say("Check it yourself", "ពិនិត្យដោយខ្លួនឯង")), h("p", {}, say("To check the whole log without trusting this page, run:", "ដើម្បីពិនិត្យកំណត់ហេតុទាំងមូលដោយមិនទុកចិត្តទំព័រនេះ សូមដំណើរការ៖")), code("npx @333eco/origin-verify audit")),
         link("/origin", say("All records", "កំណត់ត្រាទាំងអស់")));
 }
 
@@ -734,6 +765,7 @@ async function proofPage(index: number) {
     let pack: any;
     try { pack = await packRecord(logGet, index, trust); } catch (e) { return view.replaceChildren(title, card(leg(false, say("It couldn't be put together", "មិនអាចរៀបចំវាបានទេ"), (e as Error).message)), back); }
     if (route().name !== "proof") return;
+    if (pack.entry?.t !== "record" && pack.entry?.t !== "withdraw") return view.replaceChildren(head(say(`Entry #${n(index)}`, `ធាតុ #${n(index)}`)), card(h("p", {}, say("This entry holds no record, so there is no record's proof to put together.", "ធាតុនេះមិនមានកំណត់ត្រាទេ ដូច្នេះគ្មានភស្តុតាងកំណត់ត្រាដើម្បីរៀបចំទេ។"))), link(`/origin/${index}`, say(`Entry #${n(index)}`, `ធាតុ #${n(index)}`)));
     const json = JSON.stringify(pack, null, 2), tokens = Object.keys(pack.stamps?.tsa?.tokens ?? {});
     const download = () => { const a = h("a", { href: URL.createObjectURL(new Blob([json], { type: "application/json" })), download: `b-origin-record-${index}.json` }) as HTMLAnchorElement; a.click(); URL.revokeObjectURL(a.href); };
     const part = (name: string, what: string, body?: string) => h("div", { class: "ex-leg" }, h("b", {}, name), h("p", {}, what), body ? h("pre", { class: "code ex-raw" }, h("code", {}, body)) : null);
