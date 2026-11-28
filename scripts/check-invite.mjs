@@ -19,6 +19,8 @@ const CASES = [
     ["a signed mail that names no @name: nothing to invite with", [MAIL.replace("name: @sokha.keo\n", ""), true, false], null],
     ["a name line written in the BODY is not the signer's name", [MAIL.replace("name: @sokha.keo\n", "").replace("Hello.", "name: @someone.else"), true, false], null],
     ["not a B-Mail at all", ["hello\n\nname: @x\n", true, false], null],
+    // v1.10: a mail signed as a free address is checked against that address, but invites no one yet (an address page has no B-Mail thank link).
+    ["a mail signed as a free address: no invitation (yet)", [MAIL.replace("name: @sokha.keo", "name: B:7K3M-9XD2-QH4N"), true, false], null],
 ];
 const run = (m) => CASES.filter(([, args, want]) => m.invitationFor(...args) !== want).map(([why]) => why);
 

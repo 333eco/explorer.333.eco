@@ -113,11 +113,22 @@ let logCache: Log | null = null, shown = PAGE, shownRevokes = PAGE, found: { how
  * passkey signed and what that page shows, no more. A page that can't confirm it says only that, never why (a name's absence is
  * never drawn).
  */
+/** The name a B-Mail is signed as: an @name, or (b-poh-statements v1.10 §3.1; founder 2026-11-27, full parity) a free address as pages
+ *  show it. Read only from the lines above the body, never the body. */
+const SIGNED_AS = /^name: (@[A-Za-z0-9._-]{1,64}|B:[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4})$/m;
 async function signerOf(entry: any, opening: unknown, at: string): Promise<{ ok: boolean | null; text: string; fine?: string }> {
     const rev = await checkReveal(entry, opening, trust).catch(() => ({ ok: false }));
     if (!rev.ok) return { ok: false, text: say("Its proof doesn't fit this record", "ភស្តុតាងរបស់វាមិនត្រូវនឹងកំណត់ត្រានេះទេ") };
     let keys: { key: string; since: string; until: string | null }[] = [];
-    try { const r = await fetch(`https://333.eco/api/v1/names/${encodeURIComponent(at.slice(1))}`); if (r.ok) keys = ((await r.json()) as { keys?: typeof keys }).keys ?? []; } catch { /* below */ }
+    try {
+        const r = await fetch(`https://333.eco/api/v1/names/${encodeURIComponent(at.startsWith("@") ? at.slice(1) : at)}`);
+        if (r.ok) {
+            const j = (await r.json()) as { name?: string; keys?: typeof keys };
+            // ⭐ v1.10 §9.4: an address must answer AS ITSELF. One whose holder sends visitors to their @name answers that name's page,
+            //   whose keys say nothing about the address, so they never count for it.
+            if (!at.startsWith("B:") || j.name === at) keys = j.keys ?? [];
+        }
+    } catch { /* below */ }
     const k = keys.find((x) => x.key === rev.passkeyPublicKey);
     if (!k) return { ok: null, text: say(`Not confirmed against ${at}'s page`, `មិនបានបញ្ជាក់ជាមួយទំព័ររបស់ ${at} ទេ`), fine: say("Its proof names a passkey that page doesn't show.", "ភស្តុតាងរបស់វាដាក់ឈ្មោះ passkey ដែលទំព័រនោះមិនបង្ហាញ។") };
     // As times, never as text: the log writes a signing to the minute ("…T04:33Z") and a removal to the millisecond, and as text
@@ -170,7 +181,7 @@ async function searchFile(files: File[], l: Log) {
             ...matchWaiting(hashes, waiting, phashDistance)];
         // A B-Mail names its sender's @name inside what was signed; with its proof, check the passkey against that page.
         const text = new TextDecoder().decode(bytes.subarray(0, 4096));
-        const at = text.startsWith("b-mail/v1\n") ? /^name: (@[A-Za-z0-9._-]{1,64})$/m.exec(text.slice(0, text.indexOf("\n\n") + 1))?.[1] : undefined;
+        const at = text.startsWith("b-mail/v1\n") ? SIGNED_AS.exec(text.slice(0, text.indexOf("\n\n") + 1))?.[1] : undefined;
         if (at) for (const m of found.filter((x) => x.how === "exact")) {
             const proof = proofs.find((p) => p.index === m.index), entry = l.entries.find((e) => e.index === m.index) ?? waiting.find((e) => e.index === m.index);
             if (proof && entry) m.signer = await signerOf(entry, proof.opening, at);
@@ -239,7 +250,7 @@ async function bmailPage() {
             waiting ? say(...WAITS) : say(`Signed ${date(entry.witnessedAt ?? "")} (UTC). `, `បានចុះហត្ថលេខា ${date(entry.witnessedAt ?? "")} (UTC)។ `), " ", link(`/origin/${entry.index}`, say("The record", "កំណត់ត្រា"))));
         gone = withdrawnOf(l).get(entry.index);
         if (gone) rows.push(leg(false, say(`The signer withdrew it on ${date(gone)}`, `អ្នកចុះហត្ថលេខាបានដកវានៅ ${date(gone)}`), ""));
-        const at = /^name: (@[A-Za-z0-9._-]{1,64})$/m.exec(text.slice(0, text.indexOf("\n\n") + 1))?.[1];
+        const at = SIGNED_AS.exec(text.slice(0, text.indexOf("\n\n") + 1))?.[1];
         if (at && proof?.index === entry.index && proof.opening) { const sg = await signerOf(entry, proof.opening, at); rows.push(leg(sg.ok, sg.text, sg.fine ?? "")); signedAs = sg.ok === true; }
         // 2026-11-20 (A597): with no proof in the link the signer was NOT checked, and the `name:` line is only the sender's words: say so, in
         // words this site already uses, rather than skip the row in silence (anyone can sign `name: @someone` with their own passkey).
